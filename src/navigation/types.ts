@@ -1,3 +1,5 @@
+import type { TradieApplicationDraft } from '../storage/tradieApplication';
+
 export type RootStackParamList = {
   Onboarding: undefined;
   SignUp: undefined;
@@ -9,6 +11,13 @@ export type RootStackParamList = {
   PrivacyPolicy: undefined;
   HelpSupport: undefined;
   Faq: undefined;
-  BecomeTradie: undefined;
+  BecomeTradie:
+    | undefined
+    | {
+        mode?: 'create' | 'edit';
+        initial?: TradieApplicationDraft;
+      };
+  ManageTradies: undefined;
+  ChatDetail: { chatId: string; name: string; avatarUri?: string };
 };
 

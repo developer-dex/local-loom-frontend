@@ -14,6 +14,8 @@ import { PrivacyPolicyScreen } from '../screens/profile/PrivacyPolicyScreen';
 import { HelpSupportScreen } from '../screens/profile/HelpSupportScreen';
 import { FaqScreen } from '../screens/profile/FaqScreen';
 import { BecomeTradieScreen } from '../screens/profile/BecomeTradieScreen';
+import { ManageTradiesScreen } from '../screens/profile/ManageTradiesScreen';
+import { ChatDetailScreen } from '../screens/chat';
 
 const Stack = createNativeStackNavigator<RootStackParamList>();
 
@@ -107,6 +109,8 @@ export function RootNavigator() {
           <Stack.Screen name="HelpSupport" component={HelpSupportScreen} />
           <Stack.Screen name="Faq" component={FaqScreen} />
           <Stack.Screen name="BecomeTradie" component={BecomeTradieScreen} />
+          <Stack.Screen name="ManageTradies" component={ManageTradiesScreen} />
+          <Stack.Screen name="ChatDetail" component={ChatDetailScreen} />
         </Stack.Navigator>
       </NavigationContainer>
     </GestureHandlerRootView>

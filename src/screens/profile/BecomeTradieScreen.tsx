@@ -12,12 +12,15 @@ import {
   View,
 } from 'react-native';
 import * as ImagePicker from 'expo-image-picker';
-import { useNavigation } from '@react-navigation/native';
+import { useNavigation, useRoute } from '@react-navigation/native';
+import type { NativeStackNavigationProp } from '@react-navigation/native-stack';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { AppButton, AppTextField, Icon } from '../../components/ui';
 import { SERVICE_CATEGORIES, getCategoryById } from '../../data/categories';
+import { saveTradieDraft, saveTradieStatus, type TradieApplicationDraft } from '../../storage/tradieApplication';
 import { colors, fontFamilies } from '../../theme';
 import { sanitizeName, sanitizePhone, validateName, validatePhone } from '../../utils';
+import type { RootStackParamList } from '../../navigation/types';
 
 const STEPS = 4;
 
@@ -70,38 +73,45 @@ function validateEmail(value: string): string | null {
 
 export function BecomeTradieScreen() {
   const insets = useSafeAreaInsets();
-  const navigation = useNavigation();
+  const navigation = useNavigation<NativeStackNavigationProp<RootStackParamList, 'BecomeTradie'>>();
+  const route = useRoute<any>();
+  const mode: 'create' | 'edit' = route?.params?.mode === 'edit' ? 'edit' : 'create';
+  const initial: TradieApplicationDraft | undefined = route?.params?.initial;
   const [step, setStep] = useState(0);
 
-  const [photoUri, setPhotoUri] = useState<string | null>(null);
-  const [name, setName] = useState('');
-  const [phone, setPhone] = useState('');
-  const [email, setEmail] = useState('');
+  const [photoUri, setPhotoUri] = useState<string | null>(initial?.photoUri ?? null);
+  const [name, setName] = useState(initial?.name ?? '');
+  const [phone, setPhone] = useState(initial?.phone ?? '');
+  const [email, setEmail] = useState(initial?.email ?? '');
 
-  const [documents, setDocuments] = useState<Record<DocKey, { uri: string; name: string } | null>>({
-    tradeLicense: null,
-    publicLiability: null,
-    idProof: null,
-  });
+  const [documents, setDocuments] = useState<Record<DocKey, { uri: string; name: string } | null>>(
+    (initial?.documents as any) ?? {
+      tradeLicense: null,
+      publicLiability: null,
+      idProof: null,
+    },
+  );
 
-  const [businessName, setBusinessName] = useState('');
-  const [selectedServiceIds, setSelectedServiceIds] = useState<string[]>([]);
+  const [businessName, setBusinessName] = useState(initial?.businessName ?? '');
+  const [selectedServiceIds, setSelectedServiceIds] = useState<string[]>(initial?.selectedServiceIds ?? []);
   const [servicesPickerOpen, setServicesPickerOpen] = useState(false);
-  const [videoUri, setVideoUri] = useState<{ uri: string; name: string } | null>(null);
-  const [selectedLocationId, setSelectedLocationId] = useState<string | null>(null);
+  const [videoUri, setVideoUri] = useState<{ uri: string; name: string } | null>(initial?.videoUri ?? null);
+  const [selectedLocationId, setSelectedLocationId] = useState<string | null>(initial?.selectedLocationId ?? null);
   const [locationPickerOpen, setLocationPickerOpen] = useState(false);
-  const [businessImageUri, setBusinessImageUri] = useState<{ uri: string; name: string } | null>(null);
-  const [serviceDescription, setServiceDescription] = useState('');
-  const [website, setWebsite] = useState('');
-  const [openTime, setOpenTime] = useState<string | null>(null);
-  const [closeTime, setCloseTime] = useState<string | null>(null);
+  const [businessImageUri, setBusinessImageUri] = useState<{ uri: string; name: string } | null>(
+    initial?.businessImageUri ?? null,
+  );
+  const [serviceDescription, setServiceDescription] = useState(initial?.serviceDescription ?? '');
+  const [website, setWebsite] = useState(initial?.website ?? '');
+  const [openTime, setOpenTime] = useState<string | null>(initial?.openTime ?? null);
+  const [closeTime, setCloseTime] = useState<string | null>(initial?.closeTime ?? null);
   const [openTimePickerOpen, setOpenTimePickerOpen] = useState(false);
   const [closeTimePickerOpen, setCloseTimePickerOpen] = useState(false);
-  const [openDayIds, setOpenDayIds] = useState<string[]>([]);
+  const [openDayIds, setOpenDayIds] = useState<string[]>(initial?.openDayIds ?? []);
   const [openDayPickerOpen, setOpenDayPickerOpen] = useState(false);
-  const [emergencyAvailable, setEmergencyAvailable] = useState<boolean | null>(null);
+  const [emergencyAvailable, setEmergencyAvailable] = useState<boolean | null>(initial?.emergencyAvailable ?? null);
 
-  const [workImages, setWorkImages] = useState<{ uri: string; name: string }[]>([]);
+  const [workImages, setWorkImages] = useState<{ uri: string; name: string }[]>(initial?.workImages ?? []);
 
   const [nameError, setNameError] = useState<string | null>(null);
   const [emailError, setEmailError] = useState<string | null>(null);
@@ -355,7 +365,7 @@ export function BecomeTradieScreen() {
       return;
     }
     setWorkImagesError(null);
-    const payload = {
+    const payload: TradieApplicationDraft = {
       photoUri,
       name: name.trim(),
       phone: phone.trim(),
@@ -375,11 +385,13 @@ export function BecomeTradieScreen() {
       workImages,
     };
     console.log('BecomeTradie — submit', payload);
-    Alert.alert(
-      'Submitted for review',
-      'Thanks! We will review your tradie application and be in touch.',
-      [{ text: 'OK', onPress: () => navigation.goBack() }],
-    );
+    void (async () => {
+      await saveTradieDraft(payload);
+      if (mode === 'create') {
+        await saveTradieStatus('under_review');
+      }
+      navigation.navigate('ManageTradies');
+    })();
   }, [
     step,
     validateStep0,
@@ -403,6 +415,7 @@ export function BecomeTradieScreen() {
     openDayIds,
     emergencyAvailable,
     navigation,
+    mode,
   ]);
 
   const onBackPress = useCallback(() => {

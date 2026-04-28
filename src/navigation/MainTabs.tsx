@@ -8,10 +8,11 @@ import { colors, fontFamilies, spacing } from '../theme';
 import { CategoryStackNavigator } from './CategoryStack';
 import { HomeScreen } from '../screens/main';
 import { ProfileScreen } from '../screens/profile';
+import { ChatsScreen } from '../screens/chat';
 
 type MainTabParamList = {
   Home: undefined;
-  Map: undefined;
+  Chat: undefined;
   Category: undefined;
   Profile: undefined;
 };
@@ -37,8 +38,8 @@ function PillTabBar({ state, descriptors, navigation }: BottomTabBarProps) {
       const iconName =
         r.name === 'Home'
           ? 'home-09'
-          : r.name === 'Map'
-            ? 'location-01'
+          : r.name === 'Chat'
+            ? 'bubble-chat'
             : r.name === 'Category'
               ? 'dashboard-square-02'
               : 'user-03';
@@ -120,8 +121,8 @@ export function MainTabs() {
       }}
     >
       <Tab.Screen name="Home" component={HomeScreen} />
-      {/* <Tab.Screen name="Map" component={SearchScreen} /> */}
       <Tab.Screen name="Category" component={CategoryStackNavigator} />
+      <Tab.Screen name="Chat" component={ChatsScreen} />
       <Tab.Screen name="Profile" component={ProfileScreen} />
     </Tab.Navigator>
   );

@@ -4,3 +4,4 @@ export { PrivacyPolicyScreen } from './PrivacyPolicyScreen';
 export { HelpSupportScreen } from './HelpSupportScreen';
 export { FaqScreen } from './FaqScreen';
 export { BecomeTradieScreen } from './BecomeTradieScreen';
+export { ManageTradiesScreen } from './ManageTradiesScreen';

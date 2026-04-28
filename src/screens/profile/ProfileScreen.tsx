@@ -15,6 +15,7 @@ import { EditProfileBottomSheet, ProfileMenuRow } from '../../components/profile
 import { Icon, type IconName } from '../../components/ui';
 import { useAuth } from '../../context/AuthContext';
 import type { RootStackParamList } from '../../navigation/types';
+import { loadTradieDraft } from '../../storage/tradieApplication';
 import { colors, fontFamilies } from '../../theme';
 
 const AVATAR_URI =
@@ -77,8 +78,13 @@ export function ProfileScreen() {
     void key;
   }, [getRootNav]);
 
-  const onBecomeTradie = useCallback(() => {
-    getRootNav()?.navigate('BecomeTradie');
+  const onManageTradie = useCallback(() => {
+    void (async () => {
+      const root = getRootNav();
+      if (!root) return;
+      const initial = await loadTradieDraft();
+      root.navigate('BecomeTradie', initial ? { mode: 'edit', initial } : { mode: 'create' });
+    })();
   }, [getRootNav]);
 
   const onLogout = useCallback(() => {
@@ -132,13 +138,13 @@ export function ProfileScreen() {
 
             <Pressable
               accessibilityRole="button"
-              accessibilityLabel="Become a Tradies"
-              onPress={onBecomeTradie}
+              accessibilityLabel="Manage Tradie"
+              onPress={onManageTradie}
               style={({ pressed }) => [styles.tradieRow, pressed && styles.pressed]}
             >
               <Image source={TRADIE_BADGE} style={styles.tradieBadge} resizeMode="cover" />
               <Text style={styles.tradieLabel} numberOfLines={1}>
-                Become  A Tradies
+                Manage Tradie
               </Text>
               <Icon name="arrow-right-01" width={18} height={18} color={colors.primary} />
             </Pressable>
