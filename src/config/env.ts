@@ -3,5 +3,5 @@
  * @see https://docs.expo.dev/guides/environment-variables/
  */
 export const env = {
-  apiBaseUrl: process.env.EXPO_PUBLIC_API_URL ?? '',
+  apiBaseUrl: process.env.EXPO_PUBLIC_API_BASE_URL ?? '',
 } as const;

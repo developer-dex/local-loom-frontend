@@ -1,3 +1,32 @@
+// ─── Email ────────────────────────────────────────────────────────────────────
+
+export const Email_Regex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+
+export function validateEmail(value: string): string | null {
+  if (!value) return 'Email is required.';
+  if (!Email_Regex.test(value)) return 'Enter a valid email address.';
+  return null;
+}
+
+export function sanitizeEmail(input: string): { value: string; hadInvalid: boolean } {
+  const trimmed = input.trim();
+  const lowered = trimmed.toLowerCase();
+  const hadInvalid = trimmed !== input; // leading/trailing whitespace was present
+  return { value: lowered, hadInvalid };
+}
+
+// ─── Credential type detection ────────────────────────────────────────────────
+
+export type CredentialType = 'phone' | 'email' | 'empty';
+
+export function detectCredentialType(value: string): CredentialType {
+  if (!value) return 'empty';
+  if (/^\d/.test(value)) return 'phone';
+  return 'email';
+}
+
+// ─── Name ─────────────────────────────────────────────────────────────────────
+
 export function isValidNameChar(ch: string): boolean {
   return /^[A-Za-z '\-]$/.test(ch);
 }
@@ -26,9 +55,11 @@ export function sanitizePhone(input: string): { value: string; hadInvalid: boole
   return { value: digitsOnly, hadInvalid: digitsOnly.length !== input.length };
 }
 
+/** Validates an E.164 phone number (e.g. "+61412345678"). */
 export function validatePhone(value: string): string | null {
   if (!value) return 'Phone number is required.';
-  if (value.length < 8) return 'Phone number is too short.';
+  // Must start with + followed by 7–15 digits
+  if (!/^\+\d{7,15}$/.test(value)) return 'Enter a valid phone number.';
   return null;
 }
 

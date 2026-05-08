@@ -1,12 +1,31 @@
-import AsyncStorage from '@react-native-async-storage/async-storage';
-import { createContext, useCallback, useContext, useEffect, useMemo, useState, type ReactNode } from 'react';
-
-const STORAGE_KEY = '@localloom/logged_in';
+/**
+ * AuthContext — thin bridge between the existing `useAuth()` API and Redux.
+ *
+ * On mount it dispatches `hydrateAuthThunk` which:
+ *  1. Reads tokens from SecureStore
+ *  2. Calls GET /auth/profile (auto-refreshes access token if expired)
+ *  3. Restores user + tokens to Redux state
+ *
+ * `isReady` is false until hydration completes — RootNavigator waits for this
+ * before deciding the initial route, preventing a flash of the wrong screen.
+ */
+import {
+  createContext,
+  useCallback,
+  useContext,
+  useEffect,
+  useMemo,
+  useState,
+  type ReactNode,
+} from 'react';
+import { useAppDispatch, useAppSelector, selectIsLoggedIn } from '../store/hooks';
+import { hydrateAuthThunk, logoutThunk } from '../store/slices/authSlice';
 
 type AuthContextValue = {
-  /** Hydrated from storage; use `isReady` before reading `isLoggedIn` for splash decisions. */
-  isLoggedIn: boolean;
+  /** True once token hydration + profile fetch has completed. */
   isReady: boolean;
+  isLoggedIn: boolean;
+  /** @deprecated Use `logoutThunk` via `useAppDispatch` for new code. */
   login: () => Promise<void>;
   logout: () => Promise<void>;
 };
@@ -14,37 +33,26 @@ type AuthContextValue = {
 const AuthContext = createContext<AuthContextValue | null>(null);
 
 export function AuthProvider({ children }: { children: ReactNode }) {
-  const [isLoggedIn, setIsLoggedIn] = useState(false);
+  const dispatch = useAppDispatch();
+  const isLoggedIn = useAppSelector(selectIsLoggedIn);
   const [isReady, setIsReady] = useState(false);
 
   useEffect(() => {
-    let cancelled = false;
-    (async () => {
-      try {
-        const v = await AsyncStorage.getItem(STORAGE_KEY);
-        if (!cancelled) setIsLoggedIn(v === '1');
-      } finally {
-        if (!cancelled) setIsReady(true);
-      }
-    })();
-    return () => {
-      cancelled = true;
-    };
-  }, []);
+    // Hydrate session: reads SecureStore → fetches profile → restores Redux state.
+    // Always resolves (never throws) — sets isReady when done.
+    dispatch(hydrateAuthThunk()).finally(() => setIsReady(true));
+  }, [dispatch]);
 
-  const login = useCallback(async () => {
-    await AsyncStorage.setItem(STORAGE_KEY, '1');
-    setIsLoggedIn(true);
-  }, []);
+  // Kept for backward-compat — verifyOtpThunk already sets user in Redux.
+  const login = useCallback(async () => {}, []);
 
   const logout = useCallback(async () => {
-    await AsyncStorage.removeItem(STORAGE_KEY);
-    setIsLoggedIn(false);
-  }, []);
+    await dispatch(logoutThunk());
+  }, [dispatch]);
 
   const value = useMemo(
-    () => ({ isLoggedIn, isReady, login, logout }),
-    [isLoggedIn, isReady, login, logout],
+    () => ({ isReady, isLoggedIn, login, logout }),
+    [isReady, isLoggedIn, login, logout],
   );
 
   return <AuthContext.Provider value={value}>{children}</AuthContext.Provider>;

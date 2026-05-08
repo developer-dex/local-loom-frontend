@@ -6,11 +6,9 @@ import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { Icon, NearYouCard, PillChip, type NearYouItem } from '../../components/ui';
 import type { RootStackParamList } from '../../navigation/types';
 import { colors, fontFamilies } from '../../theme';
+import { useAppSelector, selectAuthUser } from '../../store/hooks';
 
 /** Remote assets — replace avatar with a local file when ready. */
-const assets = {
-  avatar: 'https://www.figma.com/api/mcp/asset/3d597b90-42da-45fc-b8bc-341bc585a1a7',
-} as const;
 
 const CATEGORIES: string[] = [
   'Plumber',
@@ -62,6 +60,10 @@ export function HomeScreen() {
   const navigation = useNavigation();
   const tabBarSpace = useMemo(() => 88 + Math.max(insets.bottom, 14), [insets.bottom]);
   const [selectedCategory, setSelectedCategory] = useState<string | null>(null);
+  const authUser = useAppSelector(selectAuthUser);
+
+  const displayName = authUser?.name ?? 'Guest';
+  const displayAvatar = authUser?.avatar ?? null;
 
   const openServiceDetail = useCallback(
     (providerId: string) => {
@@ -75,10 +77,16 @@ export function HomeScreen() {
     <View style={[styles.screen, { paddingTop: insets.top }]}>
       <View style={styles.header}>
         <View style={styles.headerLeft}>
-          <Image source={{ uri: assets.avatar }} style={styles.avatar} />
+          {displayAvatar ? (
+            <Image source={{ uri: displayAvatar }} style={styles.avatar} />
+          ) : (
+            <View style={[styles.avatar, styles.avatarPlaceholder]}>
+              <Icon name="user-03" width={22} height={22} color={colors.placeholder} />
+            </View>
+          )}
           <View style={styles.headerTextCol}>
             <Text style={styles.userName} numberOfLines={1}>
-              Olivia White
+              {displayName}
             </Text>
             <Text style={styles.userLocation} numberOfLines={1}>
               Building 1234, Road 5678..
@@ -171,6 +179,12 @@ const styles = StyleSheet.create({
     height: 42,
     borderRadius: 21,
     backgroundColor: colors.surface,
+  },
+  avatarPlaceholder: {
+    alignItems: 'center',
+    justifyContent: 'center',
+    borderWidth: 1,
+    borderColor: colors.border,
   },
   headerTextCol: {
     flex: 1,

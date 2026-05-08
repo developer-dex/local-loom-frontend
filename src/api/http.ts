@@ -1,5 +1,5 @@
 import { env } from '../config/env';
-import { ApiError } from './errors';
+import { ApiError, extractErrorMessage } from './errors';
 import type { ApiRequestOptions, HttpMethod, QueryParams } from './types';
 
 const JSON_HEADERS = {
@@ -89,7 +89,8 @@ async function request<T>(method: HttpMethod, endpoint: string, options?: ApiReq
     } catch {
       errBody = undefined;
     }
-    throw new ApiError(`HTTP ${res.status} ${res.statusText}`, {
+    const message = extractErrorMessage(errBody, `HTTP ${res.status} ${res.statusText}`);
+    throw new ApiError(message, {
       status: res.status,
       url,
       body: errBody,

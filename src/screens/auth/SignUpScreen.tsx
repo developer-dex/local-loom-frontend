@@ -1,4 +1,4 @@
-import { useMemo, useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import {
   Image,
   KeyboardAvoidingView,
@@ -9,10 +9,14 @@ import {
   Text,
   View,
 } from 'react-native';
+import * as ImagePicker from 'expo-image-picker';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { AppButton, AppTextField, Icon } from '../../components/ui';
-import { colors, fontFamilies, fontFamily, spacing } from '../../theme';
-import { sanitizeName, sanitizePhone, validateName, validatePhone } from '../../utils';
+import { colors, fontFamilies, spacing } from '../../theme';
+import { sanitizeEmail, sanitizeName, validateEmail, validateName, validatePhone } from '../../utils';
+import { useAppDispatch, useAppSelector, selectAuthStatus, selectAuthError } from '../../store/hooks';
+import { signupThunk, clearError } from '../../store/slices/authSlice';
+import { useToast } from '../../components/ui';
 
 const tradieArt = require('../../../assets/signup/tradie.png');
 const customerArt = require('../../../assets/signup/customer.png');
@@ -20,44 +24,82 @@ const customerArt = require('../../../assets/signup/customer.png');
 type Role = 'tradie' | 'customer';
 
 type Props = {
-  onContinue: (data: { role: Role; fullName: string; phone: string }) => void;
-  /** One step back in the stack (header chevron). */
+  onContinue: (data: { role: Role; fullName: string; email: string; phone: string }) => void;
   onBack: () => void;
-  /** Open Sign In (footer link). */
   onSignIn: () => void;
-  /** Skip create account and open home (guest). */
   onSkipToHome: () => void;
 };
 
 export function SignUpScreen({ onContinue, onBack, onSignIn, onSkipToHome }: Props) {
   const insets = useSafeAreaInsets();
+  const dispatch = useAppDispatch();
+  const apiStatus = useAppSelector(selectAuthStatus);
+  const apiError = useAppSelector(selectAuthError);
+
   const [role, setRole] = useState<Role | null>(null);
-  const [mobile, setMobile] = useState('');
+  const [mobile, setMobile] = useState('+');
   const [fullName, setFullName] = useState('');
+  const [email, setEmail] = useState('');
+  const [photoUri, setPhotoUri] = useState<string | null>(null);
   const [nameError, setNameError] = useState<string | null>(null);
+  const [emailError, setEmailError] = useState<string | null>(null);
   const [phoneError, setPhoneError] = useState<string | null>(null);
-  const [submitting, setSubmitting] = useState(false);
+
+  const submitting = apiStatus === 'loading';
+
+  useEffect(() => () => { dispatch(clearError()); }, [dispatch]);
+
+  const { showToast } = useToast();
+  useEffect(() => {
+    if (apiError) showToast({ message: apiError, type: 'error', duration: 5_000 });
+  }, [apiError, showToast]);
+
+  const pickPhoto = async () => {
+    const { status } = await ImagePicker.requestMediaLibraryPermissionsAsync();
+    if (status !== 'granted') {
+      showToast({ message: 'Photo library permission is required to select a photo.', type: 'error', duration: 5_000 });
+      return;
+    }
+    const result = await ImagePicker.launchImageLibraryAsync({
+      mediaTypes: ImagePicker.MediaTypeOptions.Images,
+      allowsEditing: true,
+      aspect: [1, 1],
+      quality: 0.8,
+    });
+    if (!result.canceled && result.assets.length > 0) {
+      setPhotoUri(result.assets[0].uri);
+    }
+  };
 
   const canSubmit = useMemo(() => {
     if (!role) return false;
-    if (!fullName.trim() || !mobile.trim()) return false;
-    if (validateName(fullName) || validatePhone(mobile)) return false;
+    if (!fullName.trim() || !email.trim() || !mobile.trim()) return false;
+    if (validateName(fullName) || validateEmail(email) || validatePhone(mobile)) return false;
     return true;
-  }, [role, fullName, mobile]);
+  }, [role, fullName, email, mobile]);
 
-  const onSubmit = () => {
+  const onSubmit = async () => {
     const ne = validateName(fullName);
+    const ee = validateEmail(email);
     const pe = validatePhone(mobile);
     setNameError(ne);
+    setEmailError(ee);
     setPhoneError(pe);
-    if (!role || ne || pe) return;
+    if (!role || ne || ee || pe) return;
 
-    setSubmitting(true);
-    // Later: call API to send OTP, then navigate.
-    setTimeout(() => {
-      setSubmitting(false);
-      onContinue({ role, fullName: fullName.trim(), phone: mobile });
-    }, 250);
+    const result = await dispatch(
+      signupThunk({
+        role,
+        fullName: fullName.trim(),
+        email,
+        phone: mobile,
+        profilePhotoUri: photoUri ?? undefined,
+      }),
+    );
+
+    if (signupThunk.fulfilled.match(result)) {
+      onContinue({ role, fullName: fullName.trim(), email, phone: mobile });
+    }
   };
 
   return (
@@ -85,6 +127,31 @@ export function SignUpScreen({ onContinue, onBack, onSignIn, onSkipToHome }: Pro
         <View style={styles.header}>
           <Text style={styles.title}>Create Your Account</Text>
           <Text style={styles.subtitle}>Sign up to explore live food prices and order at the right time.</Text>
+        </View>
+
+        {/* ── Profile photo picker ─────────────────────────────────────── */}
+        <View style={styles.avatarSection}>
+          <Pressable
+            onPress={pickPhoto}
+            style={styles.avatarBtn}
+            accessibilityRole="button"
+            accessibilityLabel="Select profile photo"
+          >
+            {photoUri ? (
+              <Image source={{ uri: photoUri }} style={styles.avatarImage} resizeMode="cover" />
+            ) : (
+              <View style={styles.avatarPlaceholder}>
+                <Icon name="user-03" width={32} height={32} color={colors.placeholder} />
+              </View>
+            )}
+            {/* Camera badge */}
+            <View style={styles.cameraBadge}>
+              <Icon name="add-01" width={14} height={14} color={colors.onPrimary} />
+            </View>
+          </Pressable>
+          <Text style={styles.avatarHint}>
+            {photoUri ? 'Tap to change photo' : 'Add profile photo (optional)'}
+          </Text>
         </View>
 
         <Text style={styles.sectionLabel}>Choose Your Role</Text>
@@ -115,8 +182,23 @@ export function SignUpScreen({ onContinue, onBack, onSignIn, onSkipToHome }: Pro
               const vErr = validateName(value);
               setNameError(hadInvalid ? 'Only letters and spaces are allowed.' : vErr);
             }}
-            placeholder="Jack Withe"
+            placeholder="Jack White"
             error={nameError ?? undefined}
+          />
+          <AppTextField
+            label="Email"
+            leftIconName="mail-01"
+            autoComplete="email"
+            keyboardType="email-address"
+            value={email}
+            onChangeText={(raw) => {
+              const { value, hadInvalid } = sanitizeEmail(raw);
+              setEmail(value);
+              const vErr = validateEmail(value);
+              setEmailError(hadInvalid ? 'Email cannot have leading or trailing spaces.' : vErr);
+            }}
+            placeholder="you@example.com"
+            error={emailError ?? undefined}
           />
           <AppTextField
             label="Phone number"
@@ -125,12 +207,12 @@ export function SignUpScreen({ onContinue, onBack, onSignIn, onSkipToHome }: Pro
             autoComplete="tel"
             value={mobile}
             onChangeText={(raw) => {
-              const { value, hadInvalid } = sanitizePhone(raw);
-              setMobile(value);
-              const vErr = validatePhone(value);
-              setPhoneError(hadInvalid ? 'Only numbers are allowed.' : vErr);
+              const digits = raw.replace(/[^\d]/g, '');
+              const e164 = `+${digits}`;
+              setMobile(e164);
+              setPhoneError(validatePhone(e164));
             }}
-            placeholder="Phone Number"
+            placeholder="+61412345678"
             error={phoneError ?? undefined}
           />
         </View>
@@ -151,7 +233,7 @@ export function SignUpScreen({ onContinue, onBack, onSignIn, onSkipToHome }: Pro
         </View>
 
         <Text style={styles.legal}>
-          By entering your number, you’re agreeing to our{' '}
+          By entering your number, you're agreeing to our{' '}
           <Text style={styles.legalLink}>Terms & Conditions</Text> and{' '}
           <Text style={styles.legalLink}>Privacy Policy</Text>
         </Text>
@@ -187,27 +269,15 @@ function RoleTile({
 }
 
 const styles = StyleSheet.create({
-  flex: {
-    flex: 1,
-    backgroundColor: colors.background,
-  },
-  scroll: {
-    paddingHorizontal: 20,
-    width: '100%',
-  },
+  flex: { flex: 1, backgroundColor: colors.background },
+  scroll: { paddingHorizontal: 20, width: '100%' },
   topNav: {
-    // height: 48,
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'space-between',
     paddingVertical: 6,
   },
-  backBtn: {
-    // width: 40,
-    // height: 40,
-    // alignItems: 'center',
-    // justifyContent: 'center',
-  },
+  backBtn: {},
   topNavSpacer: { flex: 1 },
   header: {
     gap: spacing.sm,
@@ -229,6 +299,54 @@ const styles = StyleSheet.create({
     textAlign: 'center',
     maxWidth: 320,
   },
+  // ── Avatar picker ──────────────────────────────────────────────────────────
+  avatarSection: {
+    alignItems: 'center',
+    marginBottom: spacing.lg,
+    gap: spacing.sm,
+  },
+  avatarBtn: {
+    width: 88,
+    height: 88,
+    borderRadius: 44,
+    position: 'relative',
+  },
+  avatarImage: {
+    width: 88,
+    height: 88,
+    borderRadius: 44,
+  },
+  avatarPlaceholder: {
+    width: 88,
+    height: 88,
+    borderRadius: 44,
+    backgroundColor: '#F4F4F4',
+    borderWidth: 1.5,
+    borderColor: colors.border,
+    borderStyle: 'dashed',
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  cameraBadge: {
+    position: 'absolute',
+    bottom: 2,
+    right: 2,
+    width: 26,
+    height: 26,
+    borderRadius: 13,
+    backgroundColor: colors.primary,
+    alignItems: 'center',
+    justifyContent: 'center',
+    borderWidth: 2,
+    borderColor: colors.background,
+  },
+  avatarHint: {
+    fontFamily: fontFamilies.inter.regular,
+    fontSize: 12,
+    lineHeight: 16,
+    color: colors.label,
+  },
+  // ── Role tiles ─────────────────────────────────────────────────────────────
   sectionLabel: {
     fontFamily: fontFamilies.nunitoSans.semibold,
     fontSize: 18,
@@ -243,15 +361,8 @@ const styles = StyleSheet.create({
     gap: 20,
     marginBottom: 32,
   },
-  tile: {
-    width: 85,
-    alignItems: 'center',
-    gap: spacing.sm,
-    paddingVertical: 0,
-  },
-  tileSelected: {
-    opacity: 1,
-  },
+  tile: { width: 85, alignItems: 'center', gap: spacing.sm, paddingVertical: 0 },
+  tileSelected: { opacity: 1 },
   tileImageWrap: {
     width: 85,
     height: 85,
@@ -264,31 +375,17 @@ const styles = StyleSheet.create({
     borderWidth: 2,
     borderColor: colors.primary,
   },
-  tileImage: {
-    width: '100%',
-    height: '100%',
-    borderRadius: 13,
-    backgroundColor: '#F4F4F4',
-  },
+  tileImage: { width: '100%', height: '100%', borderRadius: 13, backgroundColor: '#F4F4F4' },
   tileLabel: {
     fontFamily: fontFamilies.inter.regular,
     fontSize: 14,
     lineHeight: 18,
     color: colors.onboardingTitle,
   },
-  tileLabelSelected: {
-    color: colors.onboardingTitle,
-    fontFamily: fontFamilies.inter.semibold,
-  },
-  fields: {
-    gap: spacing.md,
-    marginBottom: 24,
-  },
-  cta: {
-    marginTop: 16,
-    marginBottom: 32,
-    width: '100%',
-  },
+  tileLabelSelected: { color: colors.onboardingTitle, fontFamily: fontFamilies.inter.semibold },
+  // ── Fields ─────────────────────────────────────────────────────────────────
+  fields: { gap: spacing.md, marginBottom: 24 },
+  cta: { marginTop: 16, marginBottom: 32, width: '100%' },
   footerRow: {
     flexDirection: 'row',
     justifyContent: 'center',
@@ -315,8 +412,5 @@ const styles = StyleSheet.create({
     textAlign: 'center',
     maxWidth: 320,
   },
-  legalLink: {
-    color: '#1B70F3',
-    textDecorationLine: 'underline',
-  },
+  legalLink: { color: '#1B70F3', textDecorationLine: 'underline' },
 });

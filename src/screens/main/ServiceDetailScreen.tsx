@@ -338,7 +338,7 @@ export function ServiceDetailScreen({ navigation, route }: Props) {
             </View>
 
             <View style={styles.lockedSection}>
-              <View style={[styles.lockedInner, !isLoggedIn && styles.lockedInnerBlocked]}>
+              <View style={styles.lockedInner}>
                 <View style={styles.contactCard}>
                   <View style={styles.contactRow}>
                     <View style={styles.contactLeft}>

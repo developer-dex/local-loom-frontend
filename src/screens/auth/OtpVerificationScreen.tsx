@@ -3,35 +3,70 @@ import { Animated, Easing, Keyboard, Pressable, StyleSheet, Text, TextInput, Vie
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { AppButton, Icon } from '../../components/ui';
 import { colors, fontFamilies, spacing } from '../../theme';
+import { useAppDispatch, useAppSelector, selectAuthStatus, selectAuthError } from '../../store/hooks';
+import { verifyOtpThunk, clearError } from '../../store/slices/authSlice';
+import type { IdentifierType } from '../../api/authTypes';
+import { useToast } from '../../components/ui';
 
 type Props = {
-  phone: string;
+  /** The raw identifier (phone or email) used in signup/login. */
+  identifier: string;
+  identifierType: IdentifierType;
+  /** Display-friendly version (masked or plain). Shown in the subtitle. */
+  displayIdentifier?: string;
   onBack: () => void;
-  onVerified: (data: { otp: string }) => void;
+  /** Called after OTP is verified and user is stored in Redux. */
+  onVerified: () => void;
   onResend?: () => void;
 };
 
-const OTP_LEN = 4;
+// API requires exactly 6-digit OTP
+const OTP_LEN = 6;
 const RESEND_SECONDS = 59;
 
-export function OtpVerificationScreen({ phone, onBack, onVerified, onResend }: Props) {
+/** Pure helper: derives the destination string shown in the OTP subtitle. */
+export function deriveOtpDestination(displayIdentifier?: string, identifier?: string): string {
+  return displayIdentifier ?? identifier ?? 'your contact';
+}
+
+export function OtpVerificationScreen({
+  identifier,
+  identifierType,
+  displayIdentifier,
+  onBack,
+  onVerified,
+  onResend,
+}: Props) {
   const insets = useSafeAreaInsets();
+  const dispatch = useAppDispatch();
+  const apiStatus = useAppSelector(selectAuthStatus);
+  const apiError = useAppSelector(selectAuthError);
+
   const inputRef = useRef<TextInput>(null);
   const [otp, setOtp] = useState('');
   const [isFocused, setIsFocused] = useState(false);
   const [resendLeft, setResendLeft] = useState(RESEND_SECONDS);
   const caretOpacity = useRef(new Animated.Value(1)).current;
-  const canSubmit = useMemo(() => otp.length === OTP_LEN, [otp]);
+
+  const submitting = apiStatus === 'loading';
+  const canSubmit = useMemo(() => otp.length === OTP_LEN && !submitting, [otp, submitting]);
+
+  // Clear Redux error when screen unmounts
+  useEffect(() => () => { dispatch(clearError()); }, [dispatch]);
+
+  // Show API errors as a toast
+  const { showToast } = useToast();
+  useEffect(() => {
+    if (apiError) showToast({ message: apiError, type: 'error', duration: 5_000 });
+  }, [apiError, showToast]);
 
   useEffect(() => {
     setResendLeft(RESEND_SECONDS);
-  }, [phone]);
+  }, [identifier]);
 
   useEffect(() => {
     if (resendLeft <= 0) return;
-    const t = setInterval(() => {
-      setResendLeft((s) => Math.max(0, s - 1));
-    }, 1000);
+    const t = setInterval(() => setResendLeft((s) => Math.max(0, s - 1)), 1000);
     return () => clearInterval(t);
   }, [resendLeft]);
 
@@ -44,21 +79,21 @@ export function OtpVerificationScreen({ phone, onBack, onVerified, onResend }: P
       ]),
     );
     anim.start();
-    return () => {
-      anim.stop();
-      caretOpacity.setValue(1);
-    };
+    return () => { anim.stop(); caretOpacity.setValue(1); };
   }, [caretOpacity, isFocused]);
 
   const onChange = (raw: string) => {
-    const value = raw.replace(/[^\d]/g, '').slice(0, OTP_LEN);
-    setOtp(value);
+    setOtp(raw.replace(/[^\d]/g, '').slice(0, OTP_LEN));
   };
 
-  const submit = () => {
+  const submit = async () => {
     Keyboard.dismiss();
     if (otp.length !== OTP_LEN) return;
-    onVerified({ otp });
+
+    const result = await dispatch(verifyOtpThunk({ identifier, identifierType, code: otp }));
+    if (verifyOtpThunk.fulfilled.match(result)) {
+      onVerified();
+    }
   };
 
   const resend = () => {
@@ -68,16 +103,13 @@ export function OtpVerificationScreen({ phone, onBack, onVerified, onResend }: P
     setTimeout(() => inputRef.current?.focus(), 50);
   };
 
-  const resendLabel = useMemo(() => {
-    const m = Math.floor(resendLeft / 60);
-    const s = resendLeft % 60;
-    return `Resend code in ${m}:${String(s).padStart(2, '0')}`;
-  }, [resendLeft]);
   const resendTime = useMemo(() => {
     const m = Math.floor(resendLeft / 60);
     const s = resendLeft % 60;
     return `${m}:${String(s).padStart(2, '0')}`;
   }, [resendLeft]);
+
+  const destination = deriveOtpDestination(displayIdentifier, identifier);
 
   return (
     <View style={[styles.screen, { paddingTop: insets.top, paddingBottom: Math.max(insets.bottom, spacing.lg) }]}>
@@ -90,9 +122,7 @@ export function OtpVerificationScreen({ phone, onBack, onVerified, onResend }: P
 
       <View style={styles.header}>
         <Text style={styles.title}>OTP Verification</Text>
-        <Text style={styles.subtitle}>
-        OTP has been sent to {phone}.
-        </Text>
+        <Text style={styles.subtitle}>OTP has been sent to {destination}.</Text>
       </View>
 
       <Pressable
@@ -133,7 +163,7 @@ export function OtpVerificationScreen({ phone, onBack, onVerified, onResend }: P
         style={styles.hiddenInput}
       />
 
-      <AppButton title="Verify" onPress={submit} disabled={!canSubmit} containerStyle={styles.cta} />
+      <AppButton title="Verify" onPress={submit} loading={submitting} disabled={!canSubmit} containerStyle={styles.cta} />
 
       {resendLeft > 0 ? (
         <Text style={styles.resendCountdown}>
@@ -149,26 +179,16 @@ export function OtpVerificationScreen({ phone, onBack, onVerified, onResend }: P
 }
 
 const styles = StyleSheet.create({
-  screen: {
-    flex: 1,
-    backgroundColor: colors.background,
-    paddingHorizontal: 20,
-  },
-  topNav: {
-    height: 48,
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'space-between',
-    marginBottom: 12,
-  },
+  screen: { flex: 1, backgroundColor: colors.background, paddingHorizontal: 20 },
+  topNav: { height: 48, flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', marginBottom: 12 },
   backBtn: {},
   topNavSpacer: { flex: 1 },
   header: { gap: spacing.sm, marginBottom: 24, alignItems: 'center' },
   title: { fontFamily: fontFamilies.inter.bold, fontSize: 24, lineHeight: 32, color: colors.onboardingTitle, textAlign: 'center' },
   subtitle: { fontFamily: fontFamilies.inter.regular, fontSize: 14, lineHeight: 18, color: colors.placeholder, textAlign: 'center', maxWidth: 320 },
-  otpRow: { flexDirection: 'row', gap: 10, justifyContent: 'center', marginBottom: 12 },
+  otpRow: { flexDirection: 'row', gap: 8, justifyContent: 'center', marginBottom: 12 },
   otpCell: {
-    width: 75,
+    width: 48,
     height: 56,
     borderRadius: 12,
     borderWidth: 1,
@@ -177,31 +197,21 @@ const styles = StyleSheet.create({
     justifyContent: 'center',
     backgroundColor: colors.background,
   },
-  otpCellActive: {
-    borderColor: colors.primary,
-  },
+  otpCellActive: { borderColor: colors.primary },
   otpChar: { fontFamily: fontFamilies.inter.regular, fontSize: 16, color: colors.onboardingTitle },
-  caret: {
-    width: 2,
-    height: 22,
-    borderRadius: 2,
-    backgroundColor: colors.onboardingTitle,
-  },
+  caret: { width: 2, height: 22, borderRadius: 2, backgroundColor: colors.onboardingTitle },
   hiddenInput: { position: 'absolute', left: -1000, top: -1000, width: 1, height: 1, opacity: 0 },
   cta: { marginTop: 12 },
+  apiError: {
+    fontFamily: fontFamilies.inter.regular,
+    fontSize: 13,
+    lineHeight: 18,
+    color: '#D32F2F',
+    textAlign: 'center',
+    marginTop: 8,
+  },
   resend: { alignSelf: 'center', marginTop: 14 },
   resendText: { fontFamily: fontFamilies.inter.regular, color: colors.primary, fontSize: 14, lineHeight: 18 },
-  resendCountdown: {
-    alignSelf: 'center',
-    marginTop: 18,
-    fontFamily: fontFamilies.inter.regular,
-    fontSize: 14,
-    lineHeight: 20,
-    color: colors.label,
-  },
-  resendCountdownTime: {
-    color: colors.primary,
-    fontFamily: fontFamilies.inter.semibold,
-  },
+  resendCountdown: { alignSelf: 'center', marginTop: 18, fontFamily: fontFamilies.inter.regular, fontSize: 14, lineHeight: 20, color: colors.label },
+  resendCountdownTime: { color: colors.primary, fontFamily: fontFamilies.inter.semibold },
 });
-

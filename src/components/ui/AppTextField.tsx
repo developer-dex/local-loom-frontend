@@ -70,8 +70,8 @@ const styles = StyleSheet.create({
     flex: 1,
     fontFamily: fontFamilies.inter.regular,
     fontSize: 16,
-    lineHeight: 22,
-    color: colors.placeholderText,
+    // lineHeight: 22,
+    color: colors.onboardingTitle,
   },
   inputError: {
     borderColor: colors.error,

@@ -1,10 +1,16 @@
 import type { TradieApplicationDraft } from '../storage/tradieApplication';
+import type { IdentifierType } from '../api/authTypes';
 
 export type RootStackParamList = {
   Onboarding: undefined;
   SignUp: undefined;
   SignIn: undefined;
-  Otp: { phone: string };
+  Otp: {
+    identifier: string;
+    identifierType: IdentifierType;
+    /** Masked or display-friendly version shown in the subtitle. */
+    displayIdentifier?: string;
+  };
   MainTabs: undefined;
   ServiceDetail: { providerId: string };
   TermsAndConditions: undefined;

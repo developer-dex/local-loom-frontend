@@ -2,13 +2,13 @@ import { memo } from 'react';
 import { Pressable, StyleSheet, Text, View } from 'react-native';
 import { colors, fontFamilies } from '../../theme';
 
-const shadowCard = {
-  shadowColor: '#1B1B4D' as const,
-  shadowOpacity: 0.04,
-  shadowRadius: 22.5,
-  shadowOffset: { width: 0, height: 2 } as const,
-  elevation: 2,
-};
+// const shadowCard = {
+//   shadowColor: '#1B1B4D' as const,
+//   shadowOpacity: 0.04,
+//   shadowRadius: 22.5,
+//   shadowOffset: { width: 0, height: 2 } as const,
+//   elevation: 2,
+// };
 
 export type PillChipProps = {
   label: string;
@@ -57,7 +57,7 @@ const styles = StyleSheet.create({
     borderWidth: 1,
     borderColor: '#EEEEEE',
     backgroundColor: colors.background,
-    ...shadowCard,
+    // ...shadowCard,
   },
   shellHome: {
     paddingVertical: 8,

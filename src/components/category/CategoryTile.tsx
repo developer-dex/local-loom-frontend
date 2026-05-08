@@ -1,44 +1,65 @@
 import { memo } from 'react';
-import { Dimensions, Pressable, StyleSheet, Text, View } from 'react-native';
+import { Dimensions, Image, Pressable, StyleSheet, Text, View } from 'react-native';
 import { Icon, type IconName } from '../ui/Icon';
 import { colors, fontFamilies } from '../../theme';
 
 const { width: SCREEN_W } = Dimensions.get('window');
 const H_PAD = 20;
 const GAP = 10;
-/** Figma: 3-column category grid. */
 const COLS = 3;
 export const CATEGORY_TILE_W = (SCREEN_W - H_PAD * 2 - GAP * (COLS - 1)) / COLS;
 
-/** Figma: neutral icon well (light gray), salmon/coral glyph. */
 const ICON_WELL_BG = '#F0F0F0';
 
 export type CategoryTileProps = {
   title: string;
-  icon: IconName;
-  serviceCount: number;
+  /** Local icon name — used when no imageUri is available. */
+  icon?: IconName;
+  /** Remote image URL from the API. Takes priority over `icon`. */
+  imageUri?: string | null;
+  serviceCount?: number;
   onPress: () => void;
 };
 
-export const CategoryTile = memo(function CategoryTile({ title, icon, serviceCount, onPress }: CategoryTileProps) {
-  const servicesLine = `${serviceCount} Services`;
+export const CategoryTile = memo(function CategoryTile({
+  title,
+  icon,
+  imageUri,
+  serviceCount,
+  onPress,
+}: CategoryTileProps) {
+  const servicesLine = serviceCount != null ? `${serviceCount} Services` : undefined;
 
   return (
     <Pressable
       style={({ pressed }) => [styles.card, { width: CATEGORY_TILE_W }, pressed && styles.pressed]}
       onPress={onPress}
       accessibilityRole="button"
-      accessibilityLabel={`${title}, ${servicesLine}`}
+      accessibilityLabel={servicesLine ? `${title}, ${servicesLine}` : title}
     >
       <View style={styles.iconWrap}>
-        <Icon name={icon} width={24} height={24} color={colors.primary} />
+        {imageUri ? (
+          <Image
+            source={{ uri: imageUri }}
+            style={styles.image}
+            resizeMode="cover"
+            accessibilityIgnoresInvertColors
+          />
+        ) : icon ? (
+          <Icon name={icon} width={24} height={24} color={colors.primary} />
+        ) : (
+          // Generic fallback when neither is provided
+          <Icon name="dashboard-square-02" width={24} height={24} color={colors.primary} />
+        )}
       </View>
       <Text style={styles.categoryName} numberOfLines={2}>
         {title}
       </Text>
-      <Text style={styles.servicesLine} numberOfLines={1}>
-        {servicesLine}
-      </Text>
+      {servicesLine && (
+        <Text style={styles.servicesLine} numberOfLines={1}>
+          {servicesLine}
+        </Text>
+      )}
     </Pressable>
   );
 });
@@ -69,6 +90,12 @@ const styles = StyleSheet.create({
     backgroundColor: ICON_WELL_BG,
     alignItems: 'center',
     justifyContent: 'center',
+    overflow: 'hidden',
+  },
+  image: {
+    width: 48,
+    height: 48,
+    borderRadius: 12,
   },
   categoryName: {
     fontFamily: fontFamilies.nunitoSans.semibold,

@@ -1,8 +1,8 @@
+import { useEffect, useState } from 'react';
 import { DefaultTheme, NavigationContainer, type Theme } from '@react-navigation/native';
 import { createNativeStackNavigator, type NativeStackNavigationProp, type NativeStackScreenProps } from '@react-navigation/native-stack';
 import { GestureHandlerRootView } from 'react-native-gesture-handler';
 
-import { useAuth } from '../context/AuthContext';
 import { colors } from '../theme';
 import type { RootStackParamList } from './types';
 import { MainTabs } from './MainTabs';
@@ -16,12 +16,11 @@ import { FaqScreen } from '../screens/profile/FaqScreen';
 import { BecomeTradieScreen } from '../screens/profile/BecomeTradieScreen';
 import { ManageTradiesScreen } from '../screens/profile/ManageTradiesScreen';
 import { ChatDetailScreen } from '../screens/chat';
+import { getOnboardingSeen, setOnboardingSeen } from '../storage/onboardingStorage';
+import { useAuth } from '../context/AuthContext';
 
 const Stack = createNativeStackNavigator<RootStackParamList>();
 
-/** Forward: `navigation.navigate('Screen')`. Back one step: `navigation.goBack()`. */
-
-/** Default React Navigation `background` is light grey (`rgb(242,242,242)`); use app white. */
 const navigationTheme: Theme = {
   ...DefaultTheme,
   colors: {
@@ -32,33 +31,55 @@ const navigationTheme: Theme = {
 };
 
 function OtpScreen({ navigation, route }: NativeStackScreenProps<RootStackParamList, 'Otp'>) {
-  const { login } = useAuth();
+  const { identifier, identifierType, displayIdentifier } = route.params;
   return (
     <OtpVerificationScreen
-      phone={route.params.phone}
+      identifier={identifier}
+      identifierType={identifierType}
+      displayIdentifier={displayIdentifier}
       onBack={() => navigation.goBack()}
-      onVerified={async () => {
-        await login();
-        /** Replace so Back from Home does not return to OTP. */
+      onVerified={() => {
         navigation.replace('MainTabs');
       }}
       onResend={() => {
-        // later: call resend API
+        // TODO: call resend API
       }}
     />
   );
 }
 
 export function RootNavigator() {
+  // null = still checking storage, false = show onboarding, true = skip it
+  const [onboardingSeen, setOnboardingSeenState] = useState<boolean | null>(null);
+  const { isReady, isLoggedIn } = useAuth();
+
+  useEffect(() => {
+    getOnboardingSeen().then((seen) => setOnboardingSeenState(seen));
+  }, []);
+
+  // Wait for both: onboarding flag read AND auth hydration complete.
+  // This prevents any flash of the wrong screen.
+  if (onboardingSeen === null || !isReady) return null;
+
+  // If user is logged in (tokens + profile restored), go straight to MainTabs
+  // regardless of onboarding state.
+  const initialRoute: keyof RootStackParamList = isLoggedIn
+    ? 'MainTabs'
+    : onboardingSeen
+      ? 'MainTabs'
+      : 'Onboarding';
+
+  const handleOnboardingComplete = async (navigate: () => void) => {
+    await setOnboardingSeen();
+    navigate();
+  };
+
   return (
     <GestureHandlerRootView style={{ flex: 1, backgroundColor: colors.background }}>
       <NavigationContainer theme={navigationTheme}>
         <Stack.Navigator
-          initialRouteName="Onboarding"
-          screenOptions={{
-            headerShown: false,
-            animation: 'slide_from_right',
-          }}
+          initialRouteName={initialRoute}
+          screenOptions={{ headerShown: false, animation: 'slide_from_right' }}
         >
           <Stack.Screen
             name="Onboarding"
@@ -69,18 +90,25 @@ export function RootNavigator() {
             }) {
               return (
                 <OnboardingFlow
-                  onComplete={() => navigation.navigate('SignUp')}
-                  onSkip={() => navigation.navigate('MainTabs')}
+                  onComplete={() =>
+                    handleOnboardingComplete(() => navigation.replace('MainTabs'))
+                  }
+                  onSkip={() =>
+                    handleOnboardingComplete(() => navigation.replace('MainTabs'))
+                  }
                 />
               );
             }}
           />
+
           <Stack.Screen
             name="SignUp"
             component={function SignUp({ navigation }: NativeStackScreenProps<RootStackParamList, 'SignUp'>) {
               return (
                 <SignUpScreen
-                  onContinue={({ phone }) => navigation.navigate('Otp', { phone })}
+                  onContinue={({ phone }) =>
+                    navigation.navigate('Otp', { identifier: phone, identifierType: 'phone' })
+                  }
                   onBack={() =>
                     navigation.canGoBack() ? navigation.goBack() : navigation.navigate('SignIn')
                   }
@@ -90,17 +118,22 @@ export function RootNavigator() {
               );
             }}
           />
+
           <Stack.Screen
             name="SignIn"
             component={function SignIn({ navigation }: NativeStackScreenProps<RootStackParamList, 'SignIn'>) {
               return (
                 <SignInScreen
                   onBack={() => navigation.goBack()}
-                  onSendOtp={({ phone }) => navigation.navigate('Otp', { phone })}
+                  onSignUp={() => navigation.navigate('SignUp')}
+                  onSendOtp={({ identifier, identifierType }) =>
+                    navigation.navigate('Otp', { identifier, identifierType })
+                  }
                 />
               );
             }}
           />
+
           <Stack.Screen name="Otp" component={OtpScreen} />
           <Stack.Screen name="MainTabs" component={MainTabs} />
           <Stack.Screen name="ServiceDetail" component={ServiceDetailScreen} />
@@ -116,4 +149,3 @@ export function RootNavigator() {
     </GestureHandlerRootView>
   );
 }
-

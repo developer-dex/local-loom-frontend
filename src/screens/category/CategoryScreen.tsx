@@ -1,25 +1,92 @@
-import { useCallback, useMemo, useState } from 'react';
-import { FlatList, StyleSheet, Text, TextInput, View } from 'react-native';
+import { useCallback, useEffect, useMemo, useState } from 'react';
+import {
+  ActivityIndicator,
+  FlatList,
+  StyleSheet,
+  Text,
+  TextInput,
+  View,
+} from 'react-native';
 import type { NativeStackScreenProps } from '@react-navigation/native-stack';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { CategoryTile } from '../../components/category';
 import { Icon } from '../../components/ui';
+import { useToast } from '../../components/ui';
 import { SERVICE_CATEGORIES } from '../../data/categories';
 import type { CategoryStackParamList } from '../../navigation/categoryTypes';
+import {
+  useAppDispatch,
+  useAppSelector,
+  selectCategories,
+  selectCategoriesStatus,
+  selectCategoriesError,
+} from '../../store/hooks';
+import { fetchCategoriesThunk } from '../../store/slices/categoriesSlice';
 import { colors, fontFamilies } from '../../theme';
+import type { IconName } from '../../components/ui/Icon';
 
 type Props = NativeStackScreenProps<CategoryStackParamList, 'CategoryHome'>;
+
+/** Map API category name → local icon name for categories that have no remote icon. */
+const ICON_FALLBACK: Record<string, IconName> = {
+  Plumber: 'work',
+  Electrician: 'flash',
+  'AC Repair': 'time-04',
+  Services: 'dashboard-square-02',
+  Automotive: 'motorbike-02',
+  "Men's Salon": 'user-03',
+  Carpenter: 'pencil-edit-02',
+  Cleaner: 'album-02',
+  Painter: 'align-box-top-left',
+};
 
 export function CategoryScreen({ navigation }: Props) {
   const insets = useSafeAreaInsets();
   const tabBarSpace = useMemo(() => 88 + Math.max(insets.bottom, 14), [insets.bottom]);
   const [query, setQuery] = useState('');
 
+  const dispatch = useAppDispatch();
+  const apiCategories = useAppSelector(selectCategories);
+  const status = useAppSelector(selectCategoriesStatus);
+  const apiError = useAppSelector(selectCategoriesError);
+  const { showToast } = useToast();
+
+  // Fetch on mount (skipped automatically if already succeeded)
+  useEffect(() => {
+    dispatch(fetchCategoriesThunk());
+  }, [dispatch]);
+
+  // Show API errors as a toast
+  useEffect(() => {
+    if (apiError) {
+      showToast({ message: apiError, type: 'error', duration: 5_000 });
+    }
+  }, [apiError, showToast]);
+
+  // Use API data when available, fall back to local mock data
+  const displayCategories = useMemo(() => {
+    if (apiCategories.length > 0) {
+      return apiCategories.map((c) => ({
+        id: c.id,
+        title: c.name,
+        imageUri: c.icon,
+        icon: ICON_FALLBACK[c.name] as IconName | undefined,
+      }));
+    }
+    // Fallback to mock while loading or on error
+    return SERVICE_CATEGORIES.map((c) => ({
+      id: c.id,
+      title: c.title,
+      imageUri: null,
+      icon: c.icon,
+    }));
+  }, [apiCategories]);
+
   const filtered = useMemo(() => {
     const q = query.trim().toLowerCase();
-    if (!q) return SERVICE_CATEGORIES;
-    return SERVICE_CATEGORIES.filter((c) => c.title.toLowerCase().includes(q));
-  }, [query]);
+    if (!q) return displayCategories;
+    return displayCategories.filter((c) => c.title.toLowerCase().includes(q));
+  }, [query, displayCategories]);
 
   const onSelect = useCallback(
     (categoryId: string, categoryTitle: string) => {
@@ -27,6 +94,8 @@ export function CategoryScreen({ navigation }: Props) {
     },
     [navigation],
   );
+
+  const isLoading = status === 'loading' && apiCategories.length === 0;
 
   return (
     <View style={[styles.screen, { paddingTop: insets.top }]}>
@@ -45,25 +114,31 @@ export function CategoryScreen({ navigation }: Props) {
         />
       </View>
 
-      <FlatList
-        data={filtered}
-        keyExtractor={(item) => item.id}
-        numColumns={3}
-        columnWrapperStyle={styles.columnWrap}
-        contentContainerStyle={[styles.listContent, { paddingBottom: tabBarSpace }]}
-        showsVerticalScrollIndicator={false}
-        renderItem={({ item }) => (
-          <CategoryTile
-            title={item.title}
-            icon={item.icon}
-            serviceCount={item.serviceCount}
-            onPress={() => onSelect(item.id, item.title)}
-          />
-        )}
-        ListEmptyComponent={
-          <Text style={styles.empty}>No categories match your search.</Text>
-        }
-      />
+      {isLoading ? (
+        <View style={styles.loadingWrap}>
+          <ActivityIndicator size="large" color={colors.primary} />
+        </View>
+      ) : (
+        <FlatList
+          data={filtered}
+          keyExtractor={(item) => item.id}
+          numColumns={3}
+          columnWrapperStyle={styles.columnWrap}
+          contentContainerStyle={[styles.listContent, { paddingBottom: tabBarSpace }]}
+          showsVerticalScrollIndicator={false}
+          renderItem={({ item }) => (
+            <CategoryTile
+              title={item.title}
+              icon={item.icon}
+              imageUri={item.imageUri}
+              onPress={() => onSelect(item.id, item.title)}
+            />
+          )}
+          ListEmptyComponent={
+            <Text style={styles.empty}>No categories match your search.</Text>
+          }
+        />
+      )}
     </View>
   );
 }
@@ -96,8 +171,6 @@ const styles = StyleSheet.create({
     shadowOpacity: 0.2,
     shadowRadius: 10,
     elevation: 2,
-
-    // backgroundColor: '#F5F5F5',
   },
   searchInput: {
     flex: 1,
@@ -106,7 +179,12 @@ const styles = StyleSheet.create({
     fontSize: 14,
     lineHeight: 18,
     color: colors.onboardingTitle,
-    borderRadius:40,
+    borderRadius: 40,
+  },
+  loadingWrap: {
+    flex: 1,
+    alignItems: 'center',
+    justifyContent: 'center',
   },
   columnWrap: {
     gap: 10,

@@ -17,9 +17,7 @@ import { useAuth } from '../../context/AuthContext';
 import type { RootStackParamList } from '../../navigation/types';
 import { loadTradieDraft } from '../../storage/tradieApplication';
 import { colors, fontFamilies } from '../../theme';
-
-const AVATAR_URI =
-  'https://www.figma.com/api/mcp/asset/3d597b90-42da-45fc-b8bc-341bc585a1a7';
+import { useAppSelector, selectAuthUser } from '../../store/hooks';
 
 const TRADIE_BADGE: ImageSourcePropType = require('../../../assets/signup/tradie.png');
 
@@ -42,10 +40,20 @@ export function ProfileScreen() {
   const insets = useSafeAreaInsets();
   const navigation = useNavigation();
   const { isLoggedIn, logout } = useAuth();
+  const authUser = useAppSelector(selectAuthUser);
+
+  // Use API user data when logged in, fall back to local state for guest edits
   const [profileName, setProfileName] = useState('James David');
   const [profilePhone, setProfilePhone] = useState('9979656770');
-  const [profileAvatarUri, setProfileAvatarUri] = useState(AVATAR_URI);
+  const [profileAvatarUri, setProfileAvatarUri] = useState(
+    'https://www.figma.com/api/mcp/asset/3d597b90-42da-45fc-b8bc-341bc585a1a7',
+  );
   const [editProfileOpen, setEditProfileOpen] = useState(false);
+
+  // Derive display values: prefer live API data when available
+  const displayName = authUser?.name ?? profileName;
+  const displayPhone = authUser?.phone ?? profilePhone;
+  const displayAvatar = authUser?.avatar ?? profileAvatarUri;
 
   const tabBarSpace = 96 + Math.max(insets.bottom, 14);
 
@@ -111,14 +119,18 @@ export function ProfileScreen() {
             <View style={styles.heroTop}>
               <View style={styles.identity}>
                 <View style={styles.avatarWrap}>
-                  <Image source={{ uri: profileAvatarUri }} style={styles.avatar} resizeMode="cover" />
+                  <Image
+                    source={displayAvatar ? { uri: displayAvatar } : require('../../../assets/signup/customer.png')}
+                    style={styles.avatar}
+                    resizeMode="cover"
+                  />
                 </View>
                 <View style={styles.identityText}>
                   <Text style={styles.displayName} numberOfLines={1}>
-                    {profileName}
+                    {displayName}
                   </Text>
                   <Text style={styles.phone} numberOfLines={1}>
-                    {profilePhone}
+                    {displayPhone}
                   </Text>
                 </View>
               </View>
@@ -170,7 +182,7 @@ export function ProfileScreen() {
           <Pressable
             accessibilityRole="button"
             accessibilityLabel={isLoggedIn ? 'Logout' : 'Sign in'}
-            onPress={onLogout}
+            onPress={isLoggedIn ? () => void logout() : openSignIn}
             style={({ pressed }) => [styles.logoutCard, pressed && styles.pressed]}
           >
             <Icon name="logout-01" width={24} height={24} color={colors.onboardingTitle} />
@@ -182,15 +194,13 @@ export function ProfileScreen() {
       <EditProfileBottomSheet
         visible={editProfileOpen}
         onClose={() => setEditProfileOpen(false)}
-        initialName={profileName}
-        initialPhone={profilePhone}
-        initialAvatarUri={profileAvatarUri}
+        initialName={displayName}
+        initialPhone={displayPhone}
+        initialAvatarUri={displayAvatar ?? profileAvatarUri}
         onSaved={({ name, phone, profilePhotoUri }) => {
           setProfileName(name);
           setProfilePhone(phone);
-          if (profilePhotoUri) {
-            setProfileAvatarUri(profilePhotoUri);
-          }
+          if (profilePhotoUri) setProfileAvatarUri(profilePhotoUri);
         }}
       />
     </View>
