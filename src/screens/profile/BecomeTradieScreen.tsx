@@ -1,5 +1,6 @@
-import { useCallback, useMemo, useState } from 'react';
+import { useCallback, useEffect, useMemo, useState } from 'react';
 import {
+  ActivityIndicator,
   Alert,
   Image,
   KeyboardAvoidingView,
@@ -15,18 +16,45 @@ import * as ImagePicker from 'expo-image-picker';
 import { useNavigation, useRoute } from '@react-navigation/native';
 import type { NativeStackNavigationProp } from '@react-navigation/native-stack';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
-import { AppButton, AppTextField, Icon } from '../../components/ui';
-import { SERVICE_CATEGORIES, getCategoryById } from '../../data/categories';
+import { AppButton, AppTextField, BusinessTimeWheelPicker, Icon, useToast } from '../../components/ui';
 import { saveTradieDraft, saveTradieStatus, type TradieApplicationDraft } from '../../storage/tradieApplication';
 import { colors, fontFamilies } from '../../theme';
 import { sanitizeName, sanitizePhone, validateName, validatePhone } from '../../utils';
+import { abnResultToApiJson } from '../../utils/abnData';
+import {
+  businessTimeToApi,
+  DEFAULT_BUSINESS_TIME,
+  parseStoredBusinessTime,
+  type BusinessTimeValue,
+} from '../../utils/businessTime';
+import { personalInfoFromAuthUser } from '../../utils/authUser';
+import { filterUuids, isUuid } from '../../utils/uuid';
 import type { RootStackParamList } from '../../navigation/types';
+import { abnLookupApi } from '../../api/tradies';
+import type { AbnLookupResult } from '../../api/tradieTypes';
+import {
+  useAppDispatch,
+  useAppSelector,
+  selectAuthUser,
+  selectCategories,
+  selectCategoriesError,
+  selectCategoriesLoading,
+  selectRegions,
+  selectRegionsError,
+  selectRegionsLoading,
+} from '../../store/hooks';
+import { fetchCategoriesThunk } from '../../store/slices/categoriesSlice';
+import { fetchRegionsThunk } from '../../store/slices/regionsSlice';
+import { fetchProfileThunk } from '../../store/slices/authSlice';
+import { setupBusinessProfileThunk, uploadWorkPhotosThunk } from '../../store/slices/tradiesSlice';
 
-const STEPS = 4;
+const MAX_SERVICE_CATEGORIES = 6;
+const MAX_WORK_PHOTOS = 20;
+
+const STEPS = 3;
 
 const STEP_HEADINGS = [
   'Personal info',
-  'Documents',
   'Business Details',
   'Work Image',
 ] as const;
@@ -39,21 +67,6 @@ const DOC_FIELDS: { key: DocKey; label: string; placeholder: string }[] = [
   { key: 'idProof', label: 'ID Proof', placeholder: 'Upload Your License' },
 ];
 
-type LocationOption = { id: string; label: string; comingSoon?: boolean };
-
-const LOCATIONS: LocationOption[] = [
-  { id: 'northern_melbourne', label: 'Northern Melbourne' },
-  { id: 'south_east_melbourne', label: 'South East Melbourne', comingSoon: true },
-  { id: 'western_melbourne', label: 'Western Melbourne', comingSoon: true },
-  { id: 'eastern_melbourne', label: 'Eastern Melbourne', comingSoon: true },
-];
-
-const TIME_SLOTS: string[] = [
-  '6:00 AM', '7:00 AM', '8:00 AM', '9:00 AM', '10:00 AM', '11:00 AM',
-  '12:00 PM', '1:00 PM', '2:00 PM', '3:00 PM', '4:00 PM', '5:00 PM',
-  '6:00 PM', '7:00 PM', '8:00 PM', '9:00 PM', '10:00 PM',
-];
-
 const DAYS_OF_WEEK: { id: string; label: string }[] = [
   { id: 'mon', label: 'Monday' },
   { id: 'tue', label: 'Tuesday' },
@@ -64,6 +77,17 @@ const DAYS_OF_WEEK: { id: string; label: string }[] = [
   { id: 'sun', label: 'Sunday' },
 ];
 
+/** Map short day ids to API `openDays` values (sunday–saturday). */
+const OPEN_DAY_TO_API: Record<string, string> = {
+  sun: 'sunday',
+  mon: 'monday',
+  tue: 'tuesday',
+  wed: 'wednesday',
+  thu: 'thursday',
+  fri: 'friday',
+  sat: 'saturday',
+};
+
 function validateEmail(value: string): string | null {
   const v = value.trim();
   if (!v) return 'Email is required.';
@@ -71,18 +95,249 @@ function validateEmail(value: string): string | null {
   return null;
 }
 
+/** Supports current API shape and legacy draft payloads. */
+function getAbnDisplayFields(result: AbnLookupResult) {
+  const legacy = result as AbnLookupResult & { businessName?: string; status?: string };
+  return {
+    entityName: result.entityName?.trim() || legacy.businessName?.trim() || '—',
+    abnStatus: result.abnStatus?.trim() || legacy.status?.trim() || '—',
+    entityType: result.entityType?.trim() || '—',
+  };
+}
+
+function AbnDetailsRow({
+  label,
+  value,
+  showDivider,
+}: {
+  label: string;
+  value: string;
+  showDivider?: boolean;
+}) {
+  return (
+    <>
+      <View style={abnStyles.detailRow}>
+        <Text style={abnStyles.detailLabel}>{label}</Text>
+        <Text style={abnStyles.detailValue} numberOfLines={2}>
+          {value}
+        </Text>
+      </View>
+      {showDivider ? <View style={abnStyles.detailDivider} /> : null}
+    </>
+  );
+}
+
+function AbnDetailsCard({ result }: { result: AbnLookupResult }) {
+  const { entityName, abnStatus, entityType } = getAbnDisplayFields(result);
+  return (
+    <View style={abnStyles.detailsCard}>
+      <AbnDetailsRow label="Business Name" value={entityName} showDivider />
+      <AbnDetailsRow label="Status" value={abnStatus} showDivider />
+      <AbnDetailsRow label="Entity Type" value={entityType} />
+    </View>
+  );
+}
+
+function AbnNumberField({
+  value,
+  onChangeText,
+  error,
+  verified,
+  loading,
+}: {
+  value: string;
+  onChangeText: (raw: string) => void;
+  error?: string;
+  verified: boolean;
+  loading: boolean;
+}) {
+  return (
+    <View style={abnStyles.fieldWrap}>
+      <Text style={abnStyles.fieldLabel}>ABN number</Text>
+      <View style={[abnStyles.inputWrap, error ? abnStyles.inputError : null]}>
+        <TextInput
+          value={value}
+          onChangeText={onChangeText}
+          placeholder="Enter ABN Number"
+          placeholderTextColor={colors.placeholder}
+          keyboardType="number-pad"
+          maxLength={11}
+          style={abnStyles.input}
+          accessibilityLabel="ABN number"
+        />
+        {loading ? (
+          <ActivityIndicator size="small" color={colors.primary} />
+        ) : verified ? (
+          <Icon name="checkmark-badge-01" width={24} height={24} />
+        ) : null}
+      </View>
+      {error ? <Text style={abnStyles.fieldError}>{error}</Text> : null}
+    </View>
+  );
+}
+
+function FieldError({ message }: { message?: string | null }) {
+  if (!message) return null;
+  return <Text style={fieldErrorStyles.text}>{message}</Text>;
+}
+
+const fieldErrorStyles = StyleSheet.create({
+  text: {
+    fontFamily: fontFamilies.inter.regular,
+    fontSize: 12,
+    lineHeight: 16,
+    color: colors.error,
+    marginTop: 4,
+  },
+});
+
+const abnStyles = StyleSheet.create({
+  fieldWrap: {
+    gap: 8,
+  },
+  fieldLabel: {
+    fontFamily: fontFamilies.inter.regular,
+    fontSize: 12,
+    lineHeight: 18,
+    color: colors.label,
+  },
+  inputWrap: {
+    height: 56,
+    borderRadius: 12,
+    borderWidth: 1,
+    borderColor: colors.border,
+    paddingHorizontal: 16,
+    flexDirection: 'row',
+    alignItems: 'center',
+    backgroundColor: colors.background,
+  },
+  inputError: {
+    borderColor: colors.error,
+  },
+  input: {
+    flex: 1,
+    fontFamily: fontFamilies.inter.regular,
+    fontSize: 16,
+    color: colors.onboardingTitle,
+    paddingVertical: 0,
+  },
+  fieldError: {
+    fontFamily: fontFamilies.inter.regular,
+    fontSize: 12,
+    color: colors.error,
+  },
+  detailsCard: {
+    borderRadius: 12,
+    borderWidth: 1,
+    borderColor: colors.cardBorder,
+    backgroundColor: colors.background,
+    overflow: 'hidden',
+  },
+  detailRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    paddingHorizontal: 16,
+    paddingVertical: 14,
+    gap: 12,
+  },
+  detailLabel: {
+    fontFamily: fontFamilies.inter.regular,
+    fontSize: 14,
+    lineHeight: 20,
+    color: colors.label,
+    flexShrink: 0,
+  },
+  detailValue: {
+    flex: 1,
+    fontFamily: fontFamilies.inter.semibold,
+    fontSize: 14,
+    lineHeight: 20,
+    color: colors.onboardingTitle,
+    textAlign: 'right',
+  },
+  detailDivider: {
+    height: 1,
+    backgroundColor: colors.cardBorder,
+    marginHorizontal: 16,
+  },
+});
+
 export function BecomeTradieScreen() {
   const insets = useSafeAreaInsets();
   const navigation = useNavigation<NativeStackNavigationProp<RootStackParamList, 'BecomeTradie'>>();
   const route = useRoute<any>();
   const mode: 'create' | 'edit' = route?.params?.mode === 'edit' ? 'edit' : 'create';
+  const fromSignup = route?.params?.fromSignup === true;
   const initial: TradieApplicationDraft | undefined = route?.params?.initial;
+  const authUser = useAppSelector(selectAuthUser);
+  const personalPrefill = useMemo(
+    () => (authUser ? personalInfoFromAuthUser(authUser) : null),
+    [authUser],
+  );
   const [step, setStep] = useState(0);
+  const dispatch = useAppDispatch();
+  const { showToast } = useToast();
+  const categories = useAppSelector(selectCategories);
+  const categoriesLoading = useAppSelector(selectCategoriesLoading);
+  const categoriesError = useAppSelector(selectCategoriesError);
+  const regions = useAppSelector(selectRegions);
+  const regionsLoading = useAppSelector(selectRegionsLoading);
+  const regionsError = useAppSelector(selectRegionsError);
+  const [submitting, setSubmitting] = useState(false);
 
-  const [photoUri, setPhotoUri] = useState<string | null>(initial?.photoUri ?? null);
-  const [name, setName] = useState(initial?.name ?? '');
-  const [phone, setPhone] = useState(initial?.phone ?? '');
-  const [email, setEmail] = useState(initial?.email ?? '');
+  const categoryNameById = useMemo(() => {
+    const map = new Map<string, string>();
+    for (const c of categories) {
+      map.set(c.id, c.name);
+    }
+    return map;
+  }, [categories]);
+
+  const getCategoryName = useCallback(
+    (id: string) => categoryNameById.get(id) ?? id,
+    [categoryNameById],
+  );
+
+  const regionNameById = useMemo(() => {
+    const map = new Map<string, string>();
+    for (const r of regions) {
+      map.set(r.id, r.name);
+    }
+    return map;
+  }, [regions]);
+
+  const getRegionName = useCallback(
+    (id: string) => regionNameById.get(id) ?? id,
+    [regionNameById],
+  );
+
+  useEffect(() => {
+    dispatch(fetchProfileThunk());
+  }, [dispatch]);
+
+  useEffect(() => {
+    if (step === 1) {
+      dispatch(fetchCategoriesThunk());
+      dispatch(fetchRegionsThunk());
+    }
+  }, [step, dispatch]);
+
+  const [photoUri, setPhotoUri] = useState<string | null>(
+    initial?.photoUri ?? personalPrefill?.photoUri ?? null,
+  );
+  const [name, setName] = useState(initial?.name ?? personalPrefill?.name ?? '');
+  const [phone, setPhone] = useState(initial?.phone ?? personalPrefill?.phone ?? '');
+  const [email, setEmail] = useState(initial?.email ?? personalPrefill?.email ?? '');
+
+  /** When profile loads after mount, prefill step 0 for customers (create flow, no draft). */
+  useEffect(() => {
+    if (initial || mode === 'edit' || !personalPrefill) return;
+    setPhotoUri((cur) => cur ?? personalPrefill.photoUri);
+    setName((cur) => cur || personalPrefill.name);
+    setPhone((cur) => cur || personalPrefill.phone);
+    setEmail((cur) => cur || personalPrefill.email);
+  }, [initial, mode, personalPrefill]);
 
   const [documents, setDocuments] = useState<Record<DocKey, { uri: string; name: string } | null>>(
     (initial?.documents as any) ?? {
@@ -92,19 +347,32 @@ export function BecomeTradieScreen() {
     },
   );
 
+  const [abn, setAbn] = useState(initial?.abn ?? '');
+  const [abnError, setAbnError] = useState<string | null>(null);
+  const [abnLookupLoading, setAbnLookupLoading] = useState(false);
+  const [abnLookupResult, setAbnLookupResult] = useState<AbnLookupResult | null>(initial?.abnData ?? null);
+  const [verifiedAbn, setVerifiedAbn] = useState<string | null>(
+    initial?.abn && initial?.abnData ? initial.abn : null,
+  );
   const [businessName, setBusinessName] = useState(initial?.businessName ?? '');
   const [selectedServiceIds, setSelectedServiceIds] = useState<string[]>(initial?.selectedServiceIds ?? []);
   const [servicesPickerOpen, setServicesPickerOpen] = useState(false);
   const [videoUri, setVideoUri] = useState<{ uri: string; name: string } | null>(initial?.videoUri ?? null);
-  const [selectedLocationId, setSelectedLocationId] = useState<string | null>(initial?.selectedLocationId ?? null);
+  const [selectedRegionId, setSelectedRegionId] = useState<string | null>(
+    initial?.selectedRegionId ?? initial?.selectedLocationId ?? null,
+  );
   const [locationPickerOpen, setLocationPickerOpen] = useState(false);
   const [businessImageUri, setBusinessImageUri] = useState<{ uri: string; name: string } | null>(
     initial?.businessImageUri ?? null,
   );
   const [serviceDescription, setServiceDescription] = useState(initial?.serviceDescription ?? '');
   const [website, setWebsite] = useState(initial?.website ?? '');
-  const [openTime, setOpenTime] = useState<string | null>(initial?.openTime ?? null);
-  const [closeTime, setCloseTime] = useState<string | null>(initial?.closeTime ?? null);
+  const [openTime, setOpenTime] = useState<BusinessTimeValue | null>(
+    parseStoredBusinessTime(initial?.openTime ?? null),
+  );
+  const [closeTime, setCloseTime] = useState<BusinessTimeValue | null>(
+    parseStoredBusinessTime(initial?.closeTime ?? null),
+  );
   const [openTimePickerOpen, setOpenTimePickerOpen] = useState(false);
   const [closeTimePickerOpen, setCloseTimePickerOpen] = useState(false);
   const [openDayIds, setOpenDayIds] = useState<string[]>(initial?.openDayIds ?? []);
@@ -117,20 +385,79 @@ export function BecomeTradieScreen() {
   const [emailError, setEmailError] = useState<string | null>(null);
   const [phoneError, setPhoneError] = useState<string | null>(null);
   const [documentsError, setDocumentsError] = useState<string | null>(null);
-  const [businessDetailsError, setBusinessDetailsError] = useState<string | null>(null);
+  const [businessNameError, setBusinessNameError] = useState<string | null>(null);
+  const [servicesError, setServicesError] = useState<string | null>(null);
+  const [locationError, setLocationError] = useState<string | null>(null);
+  const [serviceDescriptionError, setServiceDescriptionError] = useState<string | null>(null);
+  const [openTimeError, setOpenTimeError] = useState<string | null>(null);
+  const [closeTimeError, setCloseTimeError] = useState<string | null>(null);
+  const [openDaysError, setOpenDaysError] = useState<string | null>(null);
+  const [emergencyError, setEmergencyError] = useState<string | null>(null);
   const [workImagesError, setWorkImagesError] = useState<string | null>(null);
 
   const inputColor = useMemo(() => ({ color: colors.onboardingTitle }), []);
 
-  const toggleService = useCallback((id: string) => {
-    setSelectedServiceIds((prev) =>
-      prev.includes(id) ? prev.filter((x) => x !== id) : [...prev, id],
-    );
-    setBusinessDetailsError(null);
+  const onAbnChange = useCallback((raw: string) => {
+    const digits = raw.replace(/\D/g, '').slice(0, 11);
+    setAbn(digits);
+    setAbnError(null);
+    if (digits.length < 11) {
+      setAbnLookupResult(null);
+      setVerifiedAbn(null);
+      setAbnError(null);
+      setAbnLookupLoading(false);
+    }
   }, []);
+
+  useEffect(() => {
+    if (abn.length !== 11 || verifiedAbn === abn) return;
+
+    let cancelled = false;
+    setAbnLookupLoading(true);
+    setAbnError(null);
+
+    void (async () => {
+      try {
+        const res = await abnLookupApi(abn);
+        if (cancelled) return;
+        setAbnLookupResult(res.data);
+        setVerifiedAbn(abn);
+        const entityName = res.data.entityName?.trim();
+        setBusinessName((prev) => (prev.trim() ? prev : entityName ?? prev));
+      } catch (err: unknown) {
+        if (cancelled) return;
+        setAbnLookupResult(null);
+        setVerifiedAbn(null);
+        const msg = err instanceof Error ? err.message : 'ABN lookup failed. Please check the number.';
+        setAbnError(msg);
+      } finally {
+        if (!cancelled) setAbnLookupLoading(false);
+      }
+    })();
+
+    return () => {
+      cancelled = true;
+    };
+  }, [abn, verifiedAbn]);
+
+  const toggleService = useCallback(
+    (id: string) => {
+      setSelectedServiceIds((prev) => {
+        if (prev.includes(id)) return prev.filter((x) => x !== id);
+        if (prev.length >= MAX_SERVICE_CATEGORIES) {
+          showToast({ message: `You can select up to ${MAX_SERVICE_CATEGORIES} services.`, type: 'error' });
+          return prev;
+        }
+        return [...prev, id];
+      });
+      setServicesError(null);
+    },
+    [showToast],
+  );
 
   const toggleOpenDay = useCallback((id: string) => {
     setOpenDayIds((prev) => (prev.includes(id) ? prev.filter((x) => x !== id) : [...prev, id]));
+    setOpenDaysError(null);
   }, []);
 
   const onPickPhoto = useCallback(async () => {
@@ -201,10 +528,19 @@ export function BecomeTradieScreen() {
   const addWorkImageFromAsset = useCallback(
     (asset: ImagePicker.ImagePickerAsset) => {
       const fileName = asset.fileName ?? asset.uri.split('/').pop() ?? 'Image';
-      setWorkImages((prev) => [...prev, { uri: asset.uri, name: fileName }]);
+      setWorkImages((prev) => {
+        if (prev.length >= MAX_WORK_PHOTOS) {
+          showToast({
+            message: `Maximum ${MAX_WORK_PHOTOS} work photos allowed.`,
+            type: 'error',
+          });
+          return prev;
+        }
+        return [...prev, { uri: asset.uri, name: fileName }];
+      });
       setWorkImagesError(null);
     },
-    [],
+    [showToast],
   );
 
   const onTakeWorkPhoto = useCallback(async () => {
@@ -303,46 +639,196 @@ export function BecomeTradieScreen() {
   }, [documents]);
 
   const validateStep2 = useCallback((): boolean => {
-    if (!businessName.trim()) {
-      setBusinessDetailsError('Business name is required.');
-      return false;
-    }
-    if (selectedServiceIds.length === 0) {
-      setBusinessDetailsError('Please select at least one service.');
-      return false;
-    }
-    if (!selectedLocationId) {
-      setBusinessDetailsError('Please choose a business location.');
-      return false;
-    }
-    if (!serviceDescription.trim() || serviceDescription.trim().length < 20) {
-      setBusinessDetailsError('Please write a short service description (20+ characters).');
-      return false;
-    }
-    if (!openTime || !closeTime) {
-      setBusinessDetailsError('Please set your business hours.');
-      return false;
-    }
-    if (openDayIds.length === 0) {
-      setBusinessDetailsError('Please choose at least one open day.');
-      return false;
-    }
-    if (emergencyAvailable === null) {
-      setBusinessDetailsError('Please answer the emergency availability question.');
-      return false;
-    }
-    setBusinessDetailsError(null);
-    return true;
+    const nextAbnError =
+      abn.length !== 11
+        ? 'Enter a valid 11-digit ABN.'
+        : abnLookupLoading
+          ? 'ABN verification is still in progress.'
+          : !abnLookupResult || verifiedAbn !== abn
+            ? 'Please enter a valid ABN and wait for verification.'
+            : null;
+    const nextBusinessNameError = !businessName.trim() ? 'Business name is required.' : null;
+    const validCategoryIds = filterUuids(
+      selectedServiceIds.filter((id) => categoryNameById.has(id)),
+    );
+    const nextServicesError =
+      validCategoryIds.length === 0 ? 'Please select at least one service.' : null;
+    const nextLocationError =
+      !selectedRegionId || !isUuid(selectedRegionId)
+        ? 'Please choose a business location.'
+        : null;
+    const nextServiceDescriptionError =
+      !serviceDescription.trim() || serviceDescription.trim().length < 20
+        ? 'Please write a short service description (20+ characters).'
+        : null;
+    const nextOpenTimeError = !openTime ? 'Please select an opening time.' : null;
+    const nextCloseTimeError = !closeTime ? 'Please select a closing time.' : null;
+    const nextOpenDaysError = openDayIds.length === 0 ? 'Please choose at least one open day.' : null;
+    const nextEmergencyError =
+      emergencyAvailable === null ? 'Please answer the emergency availability question.' : null;
+
+    setAbnError(nextAbnError);
+    setBusinessNameError(nextBusinessNameError);
+    setServicesError(nextServicesError);
+    setLocationError(nextLocationError);
+    setServiceDescriptionError(nextServiceDescriptionError);
+    setOpenTimeError(nextOpenTimeError);
+    setCloseTimeError(nextCloseTimeError);
+    setOpenDaysError(nextOpenDaysError);
+    setEmergencyError(nextEmergencyError);
+
+    return !(
+      nextAbnError ||
+      nextBusinessNameError ||
+      nextServicesError ||
+      nextLocationError ||
+      nextServiceDescriptionError ||
+      nextOpenTimeError ||
+      nextCloseTimeError ||
+      nextOpenDaysError ||
+      nextEmergencyError
+    );
   }, [
+    abn,
+    abnLookupLoading,
+    abnLookupResult,
+    verifiedAbn,
     businessName,
     selectedServiceIds,
-    selectedLocationId,
+    selectedRegionId,
+    categoryNameById,
     serviceDescription,
     openTime,
     closeTime,
     openDayIds,
     emergencyAvailable,
   ]);
+
+  const buildDraftPayload = useCallback((): TradieApplicationDraft => {
+    return {
+      photoUri,
+      name: name.trim(),
+      phone: phone.trim(),
+      email: email.trim(),
+      documents,
+      abn,
+      abnData: abnLookupResult,
+      businessName: businessName.trim(),
+      selectedServiceIds,
+      videoUri,
+      selectedRegionId,
+      businessImageUri,
+      serviceDescription: serviceDescription.trim(),
+      website: website.trim() || null,
+      openTime: openTime ? businessTimeToApi(openTime) : null,
+      closeTime: closeTime ? businessTimeToApi(closeTime) : null,
+      openDayIds,
+      emergencyAvailable,
+      workImages,
+    };
+  }, [
+    photoUri,
+    name,
+    phone,
+    email,
+    documents,
+    abn,
+    abnLookupResult,
+    businessName,
+    selectedServiceIds,
+    videoUri,
+    selectedRegionId,
+    businessImageUri,
+    serviceDescription,
+    website,
+    openTime,
+    closeTime,
+    openDayIds,
+    emergencyAvailable,
+    workImages,
+  ]);
+
+  const submitBusinessSetup = useCallback(async (): Promise<boolean> => {
+    if (!openTime || !closeTime || !abnLookupResult || !selectedRegionId) return false;
+
+    const draft = buildDraftPayload();
+    void saveTradieDraft(draft);
+
+    const categoryIds = filterUuids(
+      draft.selectedServiceIds.filter((id) => categoryNameById.has(id)),
+    ).join(',');
+
+    if (!categoryIds || !isUuid(selectedRegionId)) {
+      showToast({ message: 'Please select valid services and a region.', type: 'error' });
+      return false;
+    }
+
+    const result = await dispatch(
+      setupBusinessProfileThunk({
+        businessName: draft.businessName.trim(),
+        abn: draft.abn.trim(),
+        abnData: abnResultToApiJson(draft.abnData!),
+        categoryIds,
+        regionIds: selectedRegionId,
+        serviceDescription: draft.serviceDescription || undefined,
+        website: draft.website?.trim() || undefined,
+        timeFrom: businessTimeToApi(openTime),
+        timeTo: businessTimeToApi(closeTime),
+        openDays: draft.openDayIds.map((id) => OPEN_DAY_TO_API[id] ?? id).join(','),
+        isEmergencyAvailable: draft.emergencyAvailable ?? undefined,
+        businessImageUri: draft.businessImageUri?.uri ?? undefined,
+        businessVideoUri: draft.videoUri?.uri ?? undefined,
+      }),
+    );
+
+    if (setupBusinessProfileThunk.fulfilled.match(result)) {
+      showToast({ message: 'Business profile saved successfully!', type: 'success' });
+      return true;
+    }
+
+    const errMsg =
+      typeof result.payload === 'string' ? result.payload : 'Failed to save business profile.';
+    showToast({ message: errMsg, type: 'error' });
+    return false;
+  }, [
+    abnLookupResult,
+    buildDraftPayload,
+    categoryNameById,
+    closeTime,
+    dispatch,
+    openTime,
+    selectedRegionId,
+    showToast,
+  ]);
+
+  const validateStep4 = useCallback((): boolean => {
+    if (workImages.length === 0) {
+      setWorkImagesError('Please add at least one work image.');
+      return false;
+    }
+    if (workImages.length > MAX_WORK_PHOTOS) {
+      setWorkImagesError(`Maximum ${MAX_WORK_PHOTOS} work photos allowed.`);
+      return false;
+    }
+    setWorkImagesError(null);
+    return true;
+  }, [workImages]);
+
+  const submitWorkPhotos = useCallback(async (): Promise<boolean> => {
+    const uris = workImages.map((img) => img.uri);
+    const result = await dispatch(uploadWorkPhotosThunk(uris));
+
+    if (uploadWorkPhotosThunk.fulfilled.match(result)) {
+      showToast({ message: 'Work photos uploaded successfully!', type: 'success' });
+      return true;
+    }
+
+    const errMsg =
+      typeof result.payload === 'string' ? result.payload : 'Failed to upload work images.';
+    setWorkImagesError(errMsg);
+    showToast({ message: errMsg, type: 'error' });
+    return false;
+  }, [workImages, dispatch, showToast]);
 
   const onPrimaryPress = useCallback(() => {
     if (step === 0) {
@@ -351,71 +837,52 @@ export function BecomeTradieScreen() {
       return;
     }
     if (step === 1) {
-      if (!validateStep1()) return;
-      setStep(2);
-      return;
-    }
-    if (step === 2) {
       if (!validateStep2()) return;
-      setStep(3);
+      setSubmitting(true);
+      void (async () => {
+        try {
+          const ok = await submitBusinessSetup();
+          if (ok) setStep(2);
+        } finally {
+          setSubmitting(false);
+        }
+      })();
       return;
     }
-    if (workImages.length === 0) {
-      setWorkImagesError('Please add at least one work image.');
-      return;
-    }
-    setWorkImagesError(null);
-    const payload: TradieApplicationDraft = {
-      photoUri,
-      name: name.trim(),
-      phone: phone.trim(),
-      email: email.trim(),
-      documents,
-      businessName: businessName.trim(),
-      selectedServiceIds,
-      videoUri,
-      selectedLocationId,
-      businessImageUri,
-      serviceDescription: serviceDescription.trim(),
-      website: website.trim() || null,
-      openTime,
-      closeTime,
-      openDayIds,
-      emergencyAvailable,
-      workImages,
-    };
-    console.log('BecomeTradie — submit', payload);
+    if (step !== 2) return;
+
+    if (!validateStep4()) return;
+    void saveTradieDraft(buildDraftPayload());
+
+    setSubmitting(true);
     void (async () => {
-      await saveTradieDraft(payload);
-      if (mode === 'create') {
-        await saveTradieStatus('under_review');
+      try {
+        const ok = await submitWorkPhotos();
+        if (!ok) return;
+
+        if (mode === 'create') {
+          await saveTradieStatus('under_review');
+        }
+        if (fromSignup) {
+          navigation.reset({ index: 0, routes: [{ name: 'MainTabs' }] });
+        } else {
+          navigation.navigate('ManageTradies');
+        }
+      } finally {
+        setSubmitting(false);
       }
-      navigation.navigate('ManageTradies');
     })();
   }, [
     step,
     validateStep0,
-    validateStep1,
     validateStep2,
-    workImages,
-    photoUri,
-    name,
-    phone,
-    email,
-    documents,
-    businessName,
-    selectedServiceIds,
-    videoUri,
-    selectedLocationId,
-    businessImageUri,
-    serviceDescription,
-    website,
-    openTime,
-    closeTime,
-    openDayIds,
-    emergencyAvailable,
+    validateStep4,
+    submitBusinessSetup,
+    submitWorkPhotos,
+    buildDraftPayload,
     navigation,
     mode,
+    fromSignup,
   ]);
 
   const onBackPress = useCallback(() => {
@@ -426,7 +893,12 @@ export function BecomeTradieScreen() {
     if (navigation.canGoBack()) navigation.goBack();
   }, [step, navigation]);
 
-  const primaryLabel = step === STEPS - 1 ? 'Submit for Review' : 'Continue';
+  const primaryLabel = useMemo(() => {
+    if (submitting) {
+      return step === 1 ? 'Saving...' : 'Submitting...';
+    }
+    return step === STEPS - 1 ? 'Submit for Review' : 'Continue';
+  }, [step, submitting]);
 
   return (
     <KeyboardAvoidingView
@@ -558,33 +1030,28 @@ export function BecomeTradieScreen() {
 
           {step === 1 ? (
             <View style={styles.block}>
-              <View style={styles.fields}>
-                {DOC_FIELDS.map((f) => (
-                  <DocumentUploadField
-                    key={f.key}
-                    label={f.label}
-                    placeholder={f.placeholder}
-                    fileName={documents[f.key]?.name ?? null}
-                    onPress={() => onPickDocument(f.key)}
-                  />
-                ))}
-              </View>
-              {documentsError ? <Text style={styles.inlineError}>{documentsError}</Text> : null}
-            </View>
-          ) : null}
-
-          {step === 2 ? (
-            <View style={styles.block}>
               <AppTextField
                 label="Business Name"
                 value={businessName}
                 onChangeText={(t) => {
                   setBusinessName(t);
-                  setBusinessDetailsError(null);
+                  setBusinessNameError(null);
                 }}
                 placeholder="Business Name"
+                error={businessNameError ?? undefined}
                 inputStyle={inputColor}
               />
+
+              <AbnNumberField
+                value={abn}
+                onChangeText={onAbnChange}
+                error={abnError ?? undefined}
+                verified={Boolean(abnLookupResult && verifiedAbn === abn)}
+                loading={abnLookupLoading}
+              />
+              {abnLookupResult && verifiedAbn === abn ? (
+                <AbnDetailsCard result={abnLookupResult} />
+              ) : null}
 
               <View style={styles.fieldGroup}>
                 <Text style={styles.fieldLabel}>Services</Text>
@@ -592,39 +1059,51 @@ export function BecomeTradieScreen() {
                   placeholder="Select a services"
                   value={
                     selectedServiceIds.length > 0
-                      ? selectedServiceIds
-                          .map((id) => getCategoryById(id)?.title)
-                          .filter(Boolean)
-                          .join(', ')
+                      ? selectedServiceIds.map((id) => getCategoryName(id)).join(', ')
                       : null
                   }
                   isOpen={servicesPickerOpen}
+                  hasError={Boolean(servicesError)}
                   onPress={() => setServicesPickerOpen((o) => !o)}
                 />
                 {servicesPickerOpen ? (
-                  <ListCard>
-                    {SERVICE_CATEGORIES.map((c, idx) => (
-                      <ListRow
-                        key={c.id}
-                        label={c.title}
-                        selected={selectedServiceIds.includes(c.id)}
-                        onPress={() => toggleService(c.id)}
-                        showDivider={idx < SERVICE_CATEGORIES.length - 1}
-                      />
-                    ))}
-                  </ListCard>
+                  categoriesLoading ? (
+                    <View style={styles.categoriesLoading}>
+                      <ActivityIndicator size="small" color={colors.primary} />
+                      <Text style={styles.categoriesLoadingText}>Loading services…</Text>
+                    </View>
+                  ) : categoriesError ? (
+                    <FieldError message={categoriesError} />
+                  ) : categories.length === 0 ? (
+                    <FieldError message="No services available." />
+                  ) : (
+                    <ListCard>
+                      {categories.map((c, idx) => (
+                        <ListRow
+                          key={c.id}
+                          label={c.name}
+                          selected={selectedServiceIds.includes(c.id)}
+                          onPress={() => toggleService(c.id)}
+                          showDivider={idx < categories.length - 1}
+                        />
+                      ))}
+                    </ListCard>
+                  )
                 ) : null}
-                {selectedServiceIds.length > 0 ? (
+                {!servicesPickerOpen && selectedServiceIds.length > 0 ? (
                   <ListCard>
                     {selectedServiceIds.map((id, idx) => (
                       <ListRow
                         key={id}
-                        label={getCategoryById(id)?.title ?? id}
+                        label={getCategoryName(id)}
+                        selected
+                        onPress={() => toggleService(id)}
                         showDivider={idx < selectedServiceIds.length - 1}
                       />
                     ))}
                   </ListCard>
                 ) : null}
+                <FieldError message={servicesError} />
               </View>
 
               <DocumentUploadField
@@ -638,33 +1117,54 @@ export function BecomeTradieScreen() {
                 <Text style={styles.fieldLabel}>Business Location</Text>
                 <DropdownHeader
                   placeholder="Business Location"
-                  value={LOCATIONS.find((l) => l.id === selectedLocationId)?.label ?? null}
+                  value={selectedRegionId ? getRegionName(selectedRegionId) : null}
                   isOpen={locationPickerOpen}
+                  hasError={Boolean(locationError)}
                   onPress={() => setLocationPickerOpen((o) => !o)}
                 />
                 {locationPickerOpen ? (
+                  regionsLoading ? (
+                    <View style={styles.categoriesLoading}>
+                      <ActivityIndicator size="small" color={colors.primary} />
+                      <Text style={styles.categoriesLoadingText}>Loading locations…</Text>
+                    </View>
+                  ) : regionsError ? (
+                    <FieldError message={regionsError} />
+                  ) : regions.length === 0 ? (
+                    <FieldError message="No locations available." />
+                  ) : (
+                    <ListCard>
+                      {regions.map((region, idx) => (
+                        <ListRow
+                          key={region.id}
+                          label={region.name}
+                          selected={selectedRegionId === region.id}
+                          onPress={() => {
+                            setSelectedRegionId(
+                              selectedRegionId === region.id ? null : region.id,
+                            );
+                            setLocationError(null);
+                            setLocationPickerOpen(false);
+                          }}
+                          showDivider={idx < regions.length - 1}
+                        />
+                      ))}
+                    </ListCard>
+                  )
+                ) : null}
+                {!locationPickerOpen && selectedRegionId ? (
                   <ListCard>
-                    {LOCATIONS.map((loc, idx) => (
-                      <ListRow
-                        key={loc.id}
-                        label={loc.label}
-                        suffix={loc.comingSoon ? '(Coming Soon)' : undefined}
-                        disabled={loc.comingSoon}
-                        selected={selectedLocationId === loc.id}
-                        onPress={
-                          loc.comingSoon
-                            ? undefined
-                            : () => {
-                                setSelectedLocationId(loc.id);
-                                setLocationPickerOpen(false);
-                                setBusinessDetailsError(null);
-                              }
-                        }
-                        showDivider={idx < LOCATIONS.length - 1}
-                      />
-                    ))}
+                    <ListRow
+                      label={getRegionName(selectedRegionId)}
+                      selected
+                      onPress={() => {
+                        setSelectedRegionId(null);
+                        setLocationError(null);
+                      }}
+                    />
                   </ListCard>
                 ) : null}
+                <FieldError message={locationError} />
               </View>
 
               <DocumentUploadField
@@ -680,14 +1180,15 @@ export function BecomeTradieScreen() {
                   value={serviceDescription}
                   onChangeText={(t) => {
                     setServiceDescription(t);
-                    setBusinessDetailsError(null);
+                    setServiceDescriptionError(null);
                   }}
                   placeholder="Description"
                   placeholderTextColor={colors.placeholder}
                   multiline
                   textAlignVertical="top"
-                  style={styles.textArea}
+                  style={[styles.textArea, serviceDescriptionError ? styles.textAreaError : null]}
                 />
+                <FieldError message={serviceDescriptionError} />
               </View>
 
               <AppTextField
@@ -704,63 +1205,39 @@ export function BecomeTradieScreen() {
               <View style={styles.fieldGroup}>
                 <Text style={styles.fieldLabel}>Business Time</Text>
                 <View style={styles.timeRow}>
-                  <View style={styles.timeCol}>
-                    <DropdownHeader
-                      placeholder="Open"
-                      value={openTime}
-                      isOpen={openTimePickerOpen}
-                      onPress={() => {
-                        setOpenTimePickerOpen((o) => !o);
-                        setCloseTimePickerOpen(false);
-                      }}
-                    />
-                  </View>
-                  <View style={styles.timeCol}>
-                    <DropdownHeader
-                      placeholder="Close"
-                      value={closeTime}
-                      isOpen={closeTimePickerOpen}
-                      onPress={() => {
-                        setCloseTimePickerOpen((o) => !o);
-                        setOpenTimePickerOpen(false);
-                      }}
-                    />
-                  </View>
+                  <BusinessTimeWheelPicker
+                    label="Open"
+                    placeholder="Select Time"
+                    value={openTime}
+                    isOpen={openTimePickerOpen}
+                    onToggle={() => {
+                      if (!openTime) setOpenTime(DEFAULT_BUSINESS_TIME);
+                      setOpenTimePickerOpen((o) => !o);
+                      setCloseTimePickerOpen(false);
+                    }}
+                    onChange={(t) => {
+                      setOpenTime(t);
+                      setOpenTimeError(null);
+                    }}
+                    error={openTimeError ?? undefined}
+                  />
+                  <BusinessTimeWheelPicker
+                    label="Close"
+                    placeholder="Select Time"
+                    value={closeTime}
+                    isOpen={closeTimePickerOpen}
+                    onToggle={() => {
+                      if (!closeTime) setCloseTime(DEFAULT_BUSINESS_TIME);
+                      setCloseTimePickerOpen((o) => !o);
+                      setOpenTimePickerOpen(false);
+                    }}
+                    onChange={(t) => {
+                      setCloseTime(t);
+                      setCloseTimeError(null);
+                    }}
+                    error={closeTimeError ?? undefined}
+                  />
                 </View>
-                {openTimePickerOpen ? (
-                  <ListCard>
-                    {TIME_SLOTS.map((t, idx) => (
-                      <ListRow
-                        key={`open-${t}`}
-                        label={t}
-                        selected={openTime === t}
-                        onPress={() => {
-                          setOpenTime(t);
-                          setOpenTimePickerOpen(false);
-                          setBusinessDetailsError(null);
-                        }}
-                        showDivider={idx < TIME_SLOTS.length - 1}
-                      />
-                    ))}
-                  </ListCard>
-                ) : null}
-                {closeTimePickerOpen ? (
-                  <ListCard>
-                    {TIME_SLOTS.map((t, idx) => (
-                      <ListRow
-                        key={`close-${t}`}
-                        label={t}
-                        selected={closeTime === t}
-                        onPress={() => {
-                          setCloseTime(t);
-                          setCloseTimePickerOpen(false);
-                          setBusinessDetailsError(null);
-                        }}
-                        showDivider={idx < TIME_SLOTS.length - 1}
-                      />
-                    ))}
-                  </ListCard>
-                ) : null}
               </View>
 
               <View style={styles.fieldGroup}>
@@ -776,6 +1253,7 @@ export function BecomeTradieScreen() {
                       : null
                   }
                   isOpen={openDayPickerOpen}
+                  hasError={Boolean(openDaysError)}
                   onPress={() => setOpenDayPickerOpen((o) => !o)}
                 />
                 {openDayPickerOpen ? (
@@ -787,13 +1265,14 @@ export function BecomeTradieScreen() {
                         selected={openDayIds.includes(d.id)}
                         onPress={() => {
                           toggleOpenDay(d.id);
-                          setBusinessDetailsError(null);
+                          setOpenDaysError(null);
                         }}
                         showDivider={idx < DAYS_OF_WEEK.length - 1}
                       />
                     ))}
                   </ListCard>
                 ) : null}
+                <FieldError message={openDaysError} />
               </View>
 
               <View style={styles.emergencyRow}>
@@ -806,7 +1285,7 @@ export function BecomeTradieScreen() {
                     selected={emergencyAvailable === false}
                     onPress={() => {
                       setEmergencyAvailable(false);
-                      setBusinessDetailsError(null);
+                      setEmergencyError(null);
                     }}
                   />
                   <TogglePill
@@ -814,19 +1293,16 @@ export function BecomeTradieScreen() {
                     selected={emergencyAvailable === true}
                     onPress={() => {
                       setEmergencyAvailable(true);
-                      setBusinessDetailsError(null);
+                      setEmergencyError(null);
                     }}
                   />
                 </View>
               </View>
-
-              {businessDetailsError ? (
-                <Text style={styles.inlineError}>{businessDetailsError}</Text>
-              ) : null}
+              <FieldError message={emergencyError} />
             </View>
           ) : null}
 
-          {step === 3 ? (
+          {step === 2 ? (
             <View style={styles.block}>
               <View style={styles.workGrid}>
                 {workImages.map((img) => (
@@ -858,15 +1334,18 @@ export function BecomeTradieScreen() {
                   <Icon name="add-01" width={28} height={28} color={colors.onboardingTitle} />
                 </Pressable>
               </View>
-              {workImagesError ? (
-                <Text style={styles.inlineError}>{workImagesError}</Text>
-              ) : null}
+              <FieldError message={workImagesError} />
             </View>
           ) : null}
         </ScrollView>
 
         <View style={[styles.footer, { paddingBottom: Math.max(insets.bottom, 12) }]}>
-          <AppButton title={primaryLabel} onPress={onPrimaryPress} containerStyle={styles.footerFull} />
+          <AppButton
+            title={primaryLabel}
+            onPress={onPrimaryPress}
+            containerStyle={styles.footerFull}
+            disabled={submitting}
+          />
         </View>
       </View>
     </KeyboardAvoidingView>
@@ -914,11 +1393,13 @@ function DropdownHeader({
   placeholder,
   value,
   isOpen,
+  hasError,
   onPress,
 }: {
   placeholder: string;
   value?: string | null;
   isOpen: boolean;
+  hasError?: boolean;
   onPress: () => void;
 }) {
   const hasValue = Boolean(value);
@@ -926,7 +1407,11 @@ function DropdownHeader({
     <Pressable
       onPress={onPress}
       accessibilityRole="button"
-      style={({ pressed }) => [styles.dropdownRow, pressed && styles.pressed]}
+      style={({ pressed }) => [
+        styles.dropdownRow,
+        hasError ? styles.dropdownRowError : null,
+        pressed && styles.pressed,
+      ]}
     >
       <Text
         style={[styles.dropdownText, hasValue ? styles.dropdownTextFilled : null]}
@@ -964,7 +1449,7 @@ function ListRow({
   showDivider?: boolean;
 }) {
   const inner = (
-    <View style={styles.listRow}>
+    <View style={[styles.listRow, selected && !disabled ? styles.listRowSelected : null]}>
       <Text
         style={[
           styles.listRowText,
@@ -990,6 +1475,7 @@ function ListRow({
         <Pressable
           onPress={onPress}
           accessibilityRole="button"
+          accessibilityState={{ selected: Boolean(selected) }}
           style={({ pressed }) => [pressed ? styles.pressed : null]}
         >
           {inner}
@@ -1070,7 +1556,7 @@ const styles = StyleSheet.create({
   stepperRow: {
     flexDirection: 'row',
     alignItems: 'center',
-    paddingHorizontal: 20,
+    paddingHorizontal:50,
     marginTop: 8,
     marginBottom: 24,
     // backgroundColor: colors.placeholderText,
@@ -1109,7 +1595,7 @@ const styles = StyleSheet.create({
     color: '#B5B5BD',
   },
   stepConnector: {
-    width: 40,
+    width: 60,
     height: 6,
     borderRadius: 20,
     marginLeft: 20,
@@ -1236,6 +1722,19 @@ const styles = StyleSheet.create({
   docFieldValueFilled: {
     color: colors.onboardingTitle,
   },
+  categoriesLoading: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: 8,
+    paddingVertical: 16,
+  },
+  categoriesLoadingText: {
+    fontFamily: fontFamilies.inter.regular,
+    fontSize: 14,
+    lineHeight: 20,
+    color: colors.label,
+  },
   fieldGroup: {
     gap: 8,
   },
@@ -1255,6 +1754,12 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'space-between',
+  },
+  dropdownRowError: {
+    borderColor: colors.error,
+  },
+  textAreaError: {
+    borderColor: colors.error,
   },
   dropdownText: {
     flex: 1,
@@ -1280,6 +1785,9 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'space-between',
+  },
+  listRowSelected: {
+    backgroundColor: 'rgba(245, 142, 131, 0.12)',
   },
   listRowText: {
     flex: 1,
@@ -1320,11 +1828,7 @@ const styles = StyleSheet.create({
     marginHorizontal: 16,
   },
   timeRow: {
-    flexDirection: 'row',
-    gap: 12,
-  },
-  timeCol: {
-    flex: 1,
+    gap: 16,
   },
   emergencyRow: {
     flexDirection: 'row',

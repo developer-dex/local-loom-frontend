@@ -1,35 +1,73 @@
-import { useEffect, useState } from 'react';
-import { Alert, Pressable, StyleSheet, Text, View } from 'react-native';
-import { useIsFocused, useNavigation } from '@react-navigation/native';
+import { useCallback } from 'react';
+import { ActivityIndicator, Alert, Pressable, StyleSheet, Text, View } from 'react-native';
+import { useFocusEffect, useNavigation } from '@react-navigation/native';
 import type { NativeStackNavigationProp } from '@react-navigation/native-stack';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { Icon } from '../../components/ui';
 import type { RootStackParamList } from '../../navigation/types';
-import { loadTradieDraft, loadTradieStatus } from '../../storage/tradieApplication';
-import { colors, fontFamilies } from '../../theme';
+import {
+  useAppDispatch,
+  useAppSelector,
+  selectAuthUser,
+  selectMyTradieProfile,
+  selectMyTradieProfileStatus,
+  selectTradieStats,
+} from '../../store/hooks';
+import { fetchMyTradieProfileThunk, fetchTradieStatsThunk } from '../../store/slices/tradiesSlice';
+import { myTradieProfileToDraft, profileStatusLabel } from '../../utils/tradieProfileDraft';
+import { colors, fontFamilies, nunitoSans } from '../../theme';
+
+function canEditProfile(status: string | undefined): boolean {
+  return status === 'approved' || status === 'reviewed';
+}
 
 export function ManageTradiesScreen() {
   const insets = useSafeAreaInsets();
   const navigation = useNavigation<NativeStackNavigationProp<RootStackParamList>>();
-  const isFocused = useIsFocused();
-  const [status, setStatus] = useState<'under_review' | 'reviewed'>('under_review');
-  const [draftLoaded, setDraftLoaded] = useState(false);
-  const [draft, setDraft] = useState<Awaited<ReturnType<typeof loadTradieDraft>>>(null);
+  const dispatch = useAppDispatch();
+  const authUser = useAppSelector(selectAuthUser);
+  const profile = useAppSelector(selectMyTradieProfile);
+  const profileStatus = useAppSelector(selectMyTradieProfileStatus);
+  const stats = useAppSelector(selectTradieStats);
 
-  useEffect(() => {
-    let cancelled = false;
-    if (!isFocused) return;
-    (async () => {
-      const [s, d] = await Promise.all([loadTradieStatus(), loadTradieDraft()]);
-      if (cancelled) return;
-      setStatus(s);
-      setDraft(d);
-      setDraftLoaded(true);
-    })();
-    return () => {
-      cancelled = true;
-    };
-  }, [isFocused]);
+  const loading = profileStatus === 'loading';
+  const status = profile?.profileStatus ?? 'pending';
+  const editable = canEditProfile(status);
+
+  useFocusEffect(
+    useCallback(() => {
+      void dispatch(fetchMyTradieProfileThunk());
+      void dispatch(fetchTradieStatsThunk());
+    }, [dispatch]),
+  );
+
+  const onPrimaryAction = useCallback(() => {
+    if (editable && profile) {
+      const initial = myTradieProfileToDraft(profile, {
+        name: authUser?.name,
+        phone: authUser?.phone,
+        email: authUser?.email,
+        avatar: authUser?.avatar,
+      });
+      navigation.navigate('BecomeTradie', { mode: 'edit', initial });
+      return;
+    }
+    Alert.alert('Contact', 'Your application is still being reviewed. We will notify you when it is ready.');
+  }, [editable, profile, authUser, navigation]);
+
+  const title =
+    status === 'rejected'
+      ? 'Your application was not approved'
+      : editable
+        ? 'Your application is reviewed'
+        : 'Your application is under review';
+
+  const subtitle =
+    profile?.businessName ??
+    'Find what you are looking for, right in your local community.';
+
+  const formatRating = (value: number | undefined) =>
+    value != null && Number.isFinite(value) ? value.toFixed(1) : '—';
 
   return (
     <View style={[styles.screen, { paddingTop: insets.top }]}>
@@ -46,36 +84,36 @@ export function ManageTradiesScreen() {
           <Icon name="arrow-left-01" width={24} height={24} color={colors.onboardingTitle} />
         </Pressable>
         <Text numberOfLines={1} style={styles.headerTitle}>
-          Manage Tradies
+          Manage Tradie
         </Text>
       </View>
 
       <View style={[styles.content, { paddingBottom: Math.max(insets.bottom, 14) + 24 }]}>
-        <View style={styles.reviewCard}>
-          <View style={styles.reviewCopy}>
-            <Text style={styles.reviewTitle}>
-              {status === 'reviewed' ? 'Your Application is Reviewed' : 'Your Application still Under Review'}
-            </Text>
-            <Text style={styles.reviewSubtitle}>
-              Find what you're looking for, right in your local community.
-            </Text>
-          </View>
+        {loading && !profile ? (
+          <ActivityIndicator color={colors.primary} style={styles.loader} />
+        ) : (
+          <View style={styles.reviewCard}>
+            <View style={styles.reviewCopy}>
+              <Text style={styles.statusPill}>{profileStatusLabel(status)}</Text>
+              <Text style={styles.reviewTitle}>{title}</Text>
+              <Text style={styles.reviewSubtitle}>{subtitle}</Text>
+              {stats ? (
+                <Text style={styles.statsLine}>
+                  {stats.visitCount} visits · {stats.reviewCount} reviews · {formatRating(stats.averageRating)} rating
+                </Text>
+              ) : null}
+            </View>
 
-          <Pressable
-            accessibilityRole="button"
-            accessibilityLabel={status === 'reviewed' ? 'Edit' : 'Contact'}
-            onPress={() => {
-              if (status === 'reviewed') {
-                navigation.navigate('BecomeTradie', { mode: 'edit', initial: draft ?? undefined });
-                return;
-              }
-              Alert.alert('Contact', 'We’ll add contact options here soon.');
-            }}
-            style={({ pressed }) => [styles.contactBtn, pressed && styles.pressed]}
-          >
-            <Text style={styles.contactBtnText}>{status === 'reviewed' ? 'Edit' : 'Contact'}</Text>
-          </Pressable>
-        </View>
+            <Pressable
+              accessibilityRole="button"
+              accessibilityLabel={editable ? 'Edit profile' : 'Contact'}
+              onPress={onPrimaryAction}
+              style={({ pressed }) => [styles.contactBtn, pressed && styles.pressed]}
+            >
+              <Text style={styles.contactBtnText}>{editable ? 'Edit' : 'Contact'}</Text>
+            </Pressable>
+          </View>
+        )}
       </View>
     </View>
   );
@@ -114,6 +152,9 @@ const styles = StyleSheet.create({
     paddingTop: 26,
     backgroundColor: colors.background,
   },
+  loader: {
+    marginTop: 40,
+  },
   reviewCard: {
     backgroundColor: '#FFF0EF',
     borderRadius: 20,
@@ -123,17 +164,36 @@ const styles = StyleSheet.create({
   reviewCopy: {
     gap: 6,
   },
+  statusPill: {
+    alignSelf: 'flex-start',
+    fontFamily: fontFamilies.inter.medium,
+    fontSize: 12,
+    lineHeight: 16,
+    color: colors.primary,
+    backgroundColor: '#FFE4E1',
+    paddingHorizontal: 10,
+    paddingVertical: 4,
+    borderRadius: 8,
+    overflow: 'hidden',
+  },
   reviewTitle: {
-    fontFamily: fontFamilies.nunitoSans.medium,
+    ...nunitoSans.medium,
     fontSize: 18,
     lineHeight: 24,
     color: colors.primary,
   },
   reviewSubtitle: {
-    fontFamily: fontFamilies.nunitoSans.regular,
+    ...nunitoSans.regular,
     fontSize: 12,
     lineHeight: 16,
     color: colors.placeholder,
+  },
+  statsLine: {
+    fontFamily: fontFamilies.inter.regular,
+    fontSize: 12,
+    lineHeight: 16,
+    color: '#717171',
+    marginTop: 4,
   },
   contactBtn: {
     height: 40,
@@ -154,4 +214,3 @@ const styles = StyleSheet.create({
     opacity: 0.7,
   },
 });
-

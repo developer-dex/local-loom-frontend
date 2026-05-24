@@ -1,5 +1,6 @@
-import { useCallback, useMemo, useState, type ReactNode } from 'react';
+import { useCallback, useEffect, useMemo, useState, type ReactNode } from 'react';
 import {
+  ActivityIndicator,
   Dimensions,
   FlatList,
   Image,
@@ -21,7 +22,10 @@ import { ProviderReviewsSection } from '../../components/ProviderReviewsSection'
 import type { ReviewEntry } from '../../components/ProviderReviewsSection';
 import { AppButton, Icon, PillChip, WorkPhotoGrid } from '../../components/ui';
 import type { RootStackParamList } from '../../navigation/types';
-import { colors, fontFamilies } from '../../theme';
+import { colors, fontFamilies, nunitoSans } from '../../theme';
+import { fetchTradieByIdApi, fetchTradieDetailsApi, fetchTradieContactApi } from '../../api/tradies';
+import type { TradieProfile, TradieReviewsDetail } from '../../api/tradieTypes';
+import { normalizeTradieReviewsDetail, normalizeWorkDetailImages } from '../../utils/tradieDetails';
 
 const { width: SCREEN_W } = Dimensions.get('window');
 const H_PADDING = 20;
@@ -30,203 +34,224 @@ const HERO_W = SCREEN_W - H_PADDING * 2;
 
 type DetailTab = 'about' | 'work' | 'reviews';
 
-type ProviderDetail = {
-  heroSlides: ImageSourcePropType[];
-  headline: string;
-  locationLine: string;
-  about: string;
-  services: string[];
-  /** Portfolio / work samples for the Work tab (any length). */
-  workPhotos: ImageSourcePropType[];
-  contactName: string;
-  contactPhone: string;
-  contactAvatar: ImageSourcePropType;
-  website: string;
-  email: string;
-  hours: string;
-  mapTitle: string;
-  /** Pill on hero image top-left (e.g. emergency services). */
-  emergencyAvailable?: boolean;
-  reviews: {
-    average: number;
-    totalRatings: number;
-    items: ReviewEntry[];
-  };
-};
-
-const DEFAULT_ABOUT =
-  'Professional plumber with 15+ years of experience specializing in residential and emergency repairs. Known for reliable service, fair pricing, and getting the job done right the first time. Fully licensed and insured for your peace of mind.';
-
-const PROVIDER_DETAIL: Record<string, ProviderDetail> = {
-  '1': {
-    heroSlides: [
-      require('../../../assets/first.png'),
-      require('../../../assets/first.png'),
-      require('../../../assets/first.png'),
-    ],
-    headline: 'John The Plumber',
-    locationLine: 'Northern Melbourne',
-    about: DEFAULT_ABOUT,
-    services: ['Emergency Repairs', 'Hot Water', 'Blocked Drains', 'Gas Fitting'],
-    workPhotos: [
-      require('../../../assets/work1.png'),
-      require('../../../assets/work2.png'),
-      require('../../../assets/work3.png'),
-      require('../../../assets/work4.png'),
-    ],
-    contactName: 'John White',
-    contactPhone: '65 8777 5231',
-    contactAvatar: require('../../../assets/first.png'),
-    website: 'almamlaka.com',
-    email: 'hello@almamlaka.com',
-    hours: '(Mon-Fri) Open Until 11:00 PM',
-    mapTitle: 'Shop 15, Seef Mall',
-    emergencyAvailable: true,
-    reviews: {
-      average: 4.2,
-      totalRatings: 1666,
-      items: [
-        {
-          id: 'r1',
-          author: 'Courtney Henry',
-          dateLabel: '2 mins ago',
-          rating: 5,
-          body:
-            'john was fantastic! Fixed our leaking pipe quickly and professionally. Highly recommend.',
-          avatarSource: require('../../../assets/first.png'),
-          attachmentSources: [
-            require('../../../assets/work1.png'),
-            require('../../../assets/work2.png'),
-            require('../../../assets/work3.png'),
-          ],
-        },
-        {
-          id: 'r2',
-          author: 'Ralph Edwards',
-          dateLabel: '1 week ago',
-          rating: 4,
-          body: 'On time, fair quote, and tidy workmanship. Would use again for any plumbing work.',
-        },
-        {
-          id: 'r3',
-          author: 'Jenny Wilson',
-          dateLabel: '2 weeks ago',
-          rating: 5,
-          body: 'Emergency callout on a Sunday — arrived within an hour. Lifesaver!',
-        },
-      ],
-    },
-  },
-  '2': {
-    heroSlides: [
-      require('../../../assets/second.png'),
-      require('../../../assets/second.png'),
-      require('../../../assets/second.png'),
-    ],
-    headline: "Mark's electical",
-    locationLine: 'Adelaide, Australia',
-    about:
-      'Licensed electrician for residential and commercial work. Fast response, clear quotes, and tidy job sites. Specializing in rewiring, safety switches, and smart home installs.',
-    services: ['Wiring', 'Safety Switches', 'Lighting', 'Inspections'],
-    workPhotos: [
-      require('../../../assets/work2.png'),
-      require('../../../assets/work1.png'),
-      require('../../../assets/work3.png'),
-    ],
-    contactName: 'Mark Elect',
-    contactPhone: '65 8111 2044',
-    contactAvatar: require('../../../assets/second.png'),
-    website: 'markselectrical.com',
-    email: 'hello@markselectrical.com',
-    hours: '(Mon-Sat) Open Until 9:00 PM',
-    mapTitle: 'Unit 4, Trade Park',
-    emergencyAvailable: false,
-    reviews: {
-      average: 4.7,
-      totalRatings: 892,
-      items: [
-        {
-          id: 'm1',
-          author: 'Albert Flores',
-          dateLabel: '3 days ago',
-          rating: 5,
-          body: 'Great electrical work — safety switch install was quick and explained clearly.',
-        },
-        {
-          id: 'm2',
-          author: 'Kristin Watson',
-          dateLabel: '1 week ago',
-          rating: 4,
-          body: 'Professional and punctual. Minor follow-up needed but they came back next day.',
-        },
-      ],
-    },
-  },
-  '3': {
-    heroSlides: [
-      require('../../../assets/third.png'),
-      require('../../../assets/third.png'),
-      require('../../../assets/third.png'),
-    ],
-    headline: 'Herry Ac works',
-    locationLine: 'Sydney, Australia',
-    about:
-      'HVAC team focused on installs, servicing, and emergency callouts. Transparent pricing and manufacturer-backed workmanship on split systems and ducted units.',
-    services: ['AC Install', 'Servicing', 'Refrigerant', 'Duct Cleaning'],
-    workPhotos: [
-      require('../../../assets/work3.png'),
-      require('../../../assets/work4.png'),
-      require('../../../assets/work1.png'),
-      require('../../../assets/work2.png'),
-      require('../../../assets/work3.png'),
-    ],
-    contactName: 'Herry AC',
-    contactPhone: '65 9000 3311',
-    contactAvatar: require('../../../assets/third.png'),
-    website: 'herryac.com',
-    email: 'support@herryac.com',
-    hours: '(Mon-Fri) Open Until 11:00 PM',
-    mapTitle: 'Warehouse 2, Cool Zone',
-    emergencyAvailable: true,
-    reviews: {
-      average: 4.5,
-      totalRatings: 423,
-      items: [
-        {
-          id: 'h1',
-          author: 'Darrell Steward',
-          dateLabel: '5 days ago',
-          rating: 5,
-          body: 'AC install was smooth. Team was respectful of our home and cleaned up after.',
-        },
-      ],
-    },
-  },
-};
-
 type Props = NativeStackScreenProps<RootStackParamList, 'ServiceDetail'>;
+
+/** Format open days + hours into a human-readable string. */
+function formatHours(
+  timeFrom: string | null,
+  timeTo: string | null,
+  openDays: string[],
+): string {
+  if (!timeFrom && !timeTo && openDays.length === 0) return '';
+  const days =
+    openDays.length > 0
+      ? `(${openDays.map((d) => d.charAt(0).toUpperCase() + d.slice(1, 3)).join('-')})`
+      : '';
+  const hours =
+    timeFrom && timeTo ? `Open ${timeFrom} – ${timeTo}` : timeFrom ? `From ${timeFrom}` : '';
+  return [days, hours].filter(Boolean).join(' ');
+}
+
+/** Map API TradieReview items to the ReviewEntry shape used by ProviderReviewsSection. */
+function toReviewEntry(r: TradieReviewsDetail['items'][number]): ReviewEntry {
+  return {
+    id: r.id,
+    author: r.reviewer.name,
+    dateLabel: new Date(r.createdAt).toLocaleDateString('en-AU', {
+      day: 'numeric',
+      month: 'short',
+      year: 'numeric',
+    }),
+    rating: r.rating,
+    body: r.comment ?? '',
+    avatarSource: r.reviewer.avatar ? { uri: r.reviewer.avatar } : undefined,
+  };
+}
 
 export function ServiceDetailScreen({ navigation, route }: Props) {
   const insets = useSafeAreaInsets();
   const { isLoggedIn } = useAuth();
   const { providerId } = route.params;
-  const detail = PROVIDER_DETAIL[providerId] ?? PROVIDER_DETAIL['1'];
+
+  const [profile, setProfile] = useState<TradieProfile | null>(null);
+  const [workPhotoUris, setWorkPhotoUris] = useState<string[]>([]);
+  const [workLoading, setWorkLoading] = useState(false);
+  const [workFetched, setWorkFetched] = useState(false);
+  const [reviewsDetail, setReviewsDetail] = useState<TradieReviewsDetail | null>(null);
+  const [reviewsLoading, setReviewsLoading] = useState(false);
+  const [reviewsFetched, setReviewsFetched] = useState(false);
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState<string | null>(null);
 
   const [tab, setTab] = useState<DetailTab>('about');
   const [fav, setFav] = useState(false);
   const [slideIndex, setSlideIndex] = useState(0);
 
+  // Profile only on mount — work/reviews load when their tab is selected
+  useEffect(() => {
+    let cancelled = false;
+    setLoading(true);
+    setError(null);
+    setWorkFetched(false);
+    setReviewsFetched(false);
+    setWorkPhotoUris([]);
+    setReviewsDetail(null);
+
+    fetchTradieByIdApi(providerId)
+      .then((profileRes) => {
+        if (cancelled) return;
+        setProfile(profileRes.data);
+      })
+      .catch((err: unknown) => {
+        if (cancelled) return;
+        setError(err instanceof Error ? err.message : 'Failed to load profile');
+      })
+      .finally(() => {
+        if (!cancelled) setLoading(false);
+      });
+
+    return () => {
+      cancelled = true;
+    };
+  }, [providerId]);
+
+  useEffect(() => {
+    if (tab !== 'work' || workFetched) return;
+    let cancelled = false;
+    setWorkLoading(true);
+
+    fetchTradieDetailsApi(providerId, 'work')
+      .then((res) => {
+        if (cancelled) return;
+        setWorkPhotoUris(normalizeWorkDetailImages(res.data));
+        setWorkFetched(true);
+      })
+      .catch(() => {
+        if (!cancelled) setWorkPhotoUris([]);
+      })
+      .finally(() => {
+        if (!cancelled) setWorkLoading(false);
+      });
+
+    return () => {
+      cancelled = true;
+    };
+  }, [tab, providerId, workFetched]);
+
+  useEffect(() => {
+    if (tab !== 'reviews' || reviewsFetched) return;
+    let cancelled = false;
+    setReviewsLoading(true);
+
+    fetchTradieDetailsApi(providerId, 'reviews')
+      .then((res) => {
+        if (cancelled) return;
+        setReviewsDetail(normalizeTradieReviewsDetail(res.data));
+        setReviewsFetched(true);
+      })
+      .catch(() => {
+        if (!cancelled) setReviewsDetail(null);
+      })
+      .finally(() => {
+        if (!cancelled) setReviewsLoading(false);
+      });
+
+    return () => {
+      cancelled = true;
+    };
+  }, [tab, providerId, reviewsFetched]);
+
+  const fetchReviews = useCallback(() => {
+    fetchTradieDetailsApi(providerId, 'reviews')
+      .then((res) => {
+        setReviewsDetail(normalizeTradieReviewsDetail(res.data));
+        setReviewsFetched(true);
+      })
+      .catch(() => {
+        /* best-effort */
+      });
+  }, [providerId]);
+
+  // Log contact event when user taps contact actions (fire-and-forget)
+  const logContact = useCallback(() => {
+    if (isLoggedIn) {
+      fetchTradieContactApi(providerId).catch(() => {
+        // Best-effort — ignore errors
+      });
+    }
+  }, [isLoggedIn, providerId]);
+
   const openLogin = useCallback(() => {
     navigation.navigate('SignIn');
   }, [navigation]);
 
-  const onHeroScroll = useCallback((e: NativeSyntheticEvent<NativeScrollEvent>) => {
-    const x = e.nativeEvent.contentOffset.x;
-    const i = Math.round(x / HERO_W);
-    setSlideIndex(Math.max(0, Math.min(detail.heroSlides.length - 1, i)));
-  }, [detail.heroSlides.length]);
+  const heroSlides = useMemo<ImageSourcePropType[]>(() => {
+    if (!profile) return [];
+    const images = profile.businessImages?.length
+      ? profile.businessImages
+      : profile.businessImage
+        ? [profile.businessImage]
+        : [];
+    return images.length > 0
+      ? images.map((uri) => ({ uri }))
+      : [require('../../../assets/first.png')];
+  }, [profile]);
 
-  const dots = useMemo(() => detail.heroSlides.map((_, i) => i), [detail.heroSlides]);
+  const onHeroScroll = useCallback(
+    (e: NativeSyntheticEvent<NativeScrollEvent>) => {
+      const x = e.nativeEvent.contentOffset.x;
+      const i = Math.round(x / HERO_W);
+      setSlideIndex(Math.max(0, Math.min(heroSlides.length - 1, i)));
+    },
+    [heroSlides.length],
+  );
+
+  const dots = useMemo(() => heroSlides.map((_, i) => i), [heroSlides]);
+
+  const workPhotoSources = useMemo<ImageSourcePropType[]>(
+    () => workPhotoUris.map((uri) => ({ uri })),
+    [workPhotoUris],
+  );
+
+  const reviewEntries = useMemo<ReviewEntry[]>(
+    () => (reviewsDetail?.items ?? []).map(toReviewEntry),
+    [reviewsDetail],
+  );
+
+  const hoursString = useMemo(
+    () =>
+      profile
+        ? formatHours(profile.timeFrom, profile.timeTo, profile.openDays ?? [])
+        : '',
+    [profile],
+  );
+
+  // ── Loading state ──────────────────────────────────────────────────────────
+  if (loading) {
+    return (
+      <View style={[styles.screen, styles.centered, { paddingTop: insets.top }]}>
+        <ActivityIndicator size="large" color={colors.primary} accessibilityLabel="Loading profile" />
+      </View>
+    );
+  }
+
+  // ── Error state ────────────────────────────────────────────────────────────
+  if (error || !profile) {
+    return (
+      <View style={[styles.screen, styles.centered, { paddingTop: insets.top }]}>
+        <Pressable
+          onPress={() => navigation.goBack()}
+          hitSlop={12}
+          style={styles.errorBackBtn}
+          accessibilityRole="button"
+          accessibilityLabel="Go back"
+        >
+          <Icon name="arrow-left-01" width={24} height={24} color={colors.onboardingTitle} />
+        </Pressable>
+        <Text style={styles.errorText}>{error ?? 'Profile not found.'}</Text>
+      </View>
+    );
+  }
 
   return (
     <View style={[styles.screen, { paddingTop: insets.top }]}>
@@ -251,9 +276,10 @@ export function ServiceDetailScreen({ navigation, route }: Props) {
         keyboardShouldPersistTaps="handled"
         nestedScrollEnabled
       >
+        {/* ── Hero carousel ── */}
         <View style={styles.heroWrap}>
           <FlatList
-            data={detail.heroSlides}
+            data={heroSlides}
             keyExtractor={(_, index) => `slide-${index}`}
             horizontal
             pagingEnabled
@@ -269,7 +295,7 @@ export function ServiceDetailScreen({ navigation, route }: Props) {
               index,
             })}
           />
-          {detail.emergencyAvailable ? (
+          {profile.isEmergencyAvailable ? (
             <View
               style={styles.heroEmergencyTag}
               pointerEvents="none"
@@ -293,19 +319,24 @@ export function ServiceDetailScreen({ navigation, route }: Props) {
           </Pressable>
           <View style={styles.dotsRow} pointerEvents="none">
             {dots.map((i) => (
-              <View key={i} style={[styles.dot, i === slideIndex ? styles.dotActive : styles.dotIdle]} />
+              <View
+                key={i}
+                style={[styles.dot, i === slideIndex ? styles.dotActive : styles.dotIdle]}
+              />
             ))}
           </View>
         </View>
 
+        {/* ── Profile block ── */}
         <View style={styles.profileBlock}>
-          <Text style={styles.headline}>{detail.headline}</Text>
+          <Text style={styles.headline}>{profile.businessName}</Text>
           <View style={styles.locationRow}>
             <Icon name="location-01" width={16} height={16} color={colors.primary} />
-            <Text style={styles.locationText}>{detail.locationLine}</Text>
+            <Text style={styles.locationText}>{profile.businessLocation ?? ''}</Text>
           </View>
         </View>
 
+        {/* ── Tab segment ── */}
         <View style={styles.segment}>
           {(['about', 'work', 'reviews'] as const).map((key) => {
             const selected = tab === key;
@@ -318,21 +349,24 @@ export function ServiceDetailScreen({ navigation, route }: Props) {
                 accessibilityRole="tab"
                 accessibilityState={{ selected }}
               >
-                <Text style={[styles.segmentLabel, selected && styles.segmentLabelActive]}>{label}</Text>
+                <Text style={[styles.segmentLabel, selected && styles.segmentLabelActive]}>
+                  {label}
+                </Text>
               </Pressable>
             );
           })}
         </View>
 
+        {/* ── About tab ── */}
         {tab === 'about' && (
           <>
-            <Text style={styles.aboutBody}>{detail.about}</Text>
+            <Text style={styles.aboutBody}>{profile.serviceDescription ?? ''}</Text>
 
             <View style={styles.servicesBlock}>
               <Text style={styles.servicesTitle}>Services</Text>
               <View style={styles.servicesWrap}>
-                {detail.services.map((s) => (
-                  <PillChip key={s} variant="detail" label={s} />
+                {profile.services.map((s) => (
+                  <PillChip key={s.id} variant="detail" label={s.name} />
                 ))}
               </View>
             </View>
@@ -342,17 +376,36 @@ export function ServiceDetailScreen({ navigation, route }: Props) {
                 <View style={styles.contactCard}>
                   <View style={styles.contactRow}>
                     <View style={styles.contactLeft}>
-                      <Image source={detail.contactAvatar} style={styles.contactAvatar} />
+                      {profile.user.avatar ? (
+                        <Image
+                          source={{ uri: profile.user.avatar }}
+                          style={styles.contactAvatar}
+                        />
+                      ) : (
+                        <View style={[styles.contactAvatar, styles.contactAvatarPlaceholder]}>
+                          <Icon name="user-03" width={24} height={24} color={colors.placeholder} />
+                        </View>
+                      )}
                       <View>
-                        <Text style={styles.contactName}>{detail.contactName}</Text>
-                        <Text style={styles.contactPhone}>{detail.contactPhone}</Text>
+                        <Text style={styles.contactName}>{profile.user.name}</Text>
+                        <Text style={styles.contactPhone}>{profile.user.phone}</Text>
                       </View>
                     </View>
                     <View style={styles.contactActions}>
-                      <Pressable style={styles.iconAction} accessibilityLabel="Call" disabled={!isLoggedIn}>
+                      <Pressable
+                        style={styles.iconAction}
+                        accessibilityLabel="Call"
+                        disabled={!isLoggedIn}
+                        onPress={logContact}
+                      >
                         <Icon name="call-02" width={18} height={18} color={colors.primary} />
                       </Pressable>
-                      <Pressable style={styles.iconAction} accessibilityLabel="Message" disabled={!isLoggedIn}>
+                      <Pressable
+                        style={styles.iconAction}
+                        accessibilityLabel="Message"
+                        disabled={!isLoggedIn}
+                        onPress={logContact}
+                      >
                         <Icon name="bubble-chat" width={18} height={18} color={colors.primary} />
                       </Pressable>
                     </View>
@@ -363,17 +416,17 @@ export function ServiceDetailScreen({ navigation, route }: Props) {
                   <BusinessRow
                     icon={<Icon name="work" width={18} height={18} color={colors.primary} />}
                     label="Website"
-                    value={detail.website}
+                    value={profile.website ?? ''}
                   />
                   <BusinessRow
                     icon={<Icon name="mail-01" width={18} height={18} color={colors.primary} />}
                     label="Email"
-                    value={detail.email}
+                    value={profile.user.email ?? ''}
                   />
                   <BusinessRow
                     icon={<Icon name="time-04" width={18} height={18} color={colors.primary} />}
                     label="Time"
-                    value={detail.hours}
+                    value={hoursString}
                   />
                 </View>
               </View>
@@ -383,7 +436,9 @@ export function ServiceDetailScreen({ navigation, route }: Props) {
                   <BlurView
                     intensity={Platform.OS === 'ios' ? 10 : 10}
                     tint="light"
-                    experimentalBlurMethod={Platform.OS === 'android' ? 'dimezisBlurView' : undefined}
+                    experimentalBlurMethod={
+                      Platform.OS === 'android' ? 'dimezisBlurView' : undefined
+                    }
                     style={styles.lockedBlur}
                   />
                   <View style={styles.loginOverlay} pointerEvents="box-none">
@@ -401,15 +456,28 @@ export function ServiceDetailScreen({ navigation, route }: Props) {
           </>
         )}
 
-        {tab === 'work' && <WorkPhotoGrid photos={detail.workPhotos} />}
-        {tab === 'reviews' && (
-          <ProviderReviewsSection
-            providerName={detail.headline}
-            average={detail.reviews.average}
-            totalRatings={detail.reviews.totalRatings}
-            reviews={detail.reviews.items}
-          />
-        )}
+        {/* ── Work tab ── */}
+        {tab === 'work' &&
+          (workLoading ? (
+            <ActivityIndicator color={colors.primary} style={styles.tabLoader} />
+          ) : (
+            <WorkPhotoGrid photos={workPhotoSources} />
+          ))}
+
+        {/* ── Reviews tab ── */}
+        {tab === 'reviews' &&
+          (reviewsLoading ? (
+            <ActivityIndicator color={colors.primary} style={styles.tabLoader} />
+          ) : (
+            <ProviderReviewsSection
+              providerName={profile.businessName}
+              tradieProfileId={profile.id}
+              average={reviewsDetail?.average ?? profile.averageRating ?? 0}
+              totalRatings={reviewsDetail?.totalRatings ?? profile.totalRatingCount ?? 0}
+              reviews={reviewEntries}
+              onReviewPosted={fetchReviews}
+            />
+          ))}
       </ScrollView>
     </View>
   );
@@ -448,6 +516,23 @@ const styles = StyleSheet.create({
     flex: 1,
     backgroundColor: colors.background,
   },
+  centered: {
+    justifyContent: 'center',
+    alignItems: 'center',
+  },
+  errorBackBtn: {
+    position: 'absolute',
+    top: 16,
+    left: H_PADDING,
+  },
+  errorText: {
+    ...nunitoSans.regular,
+    fontSize: 14,
+    lineHeight: 20,
+    color: colors.label,
+    textAlign: 'center',
+    paddingHorizontal: 32,
+  },
   topNav: {
     flexDirection: 'row',
     alignItems: 'center',
@@ -458,11 +543,10 @@ const styles = StyleSheet.create({
   },
   topNavTitle: {
     flex: 1,
-    fontFamily: fontFamilies.nunitoSans.regular,
+    ...nunitoSans.regular,
     fontSize: 18,
     lineHeight: 24,
     color: colors.onboardingTitle,
-    // textAlign: 'center',
   },
   topNavRightSpacer: {
     width: 24,
@@ -494,7 +578,7 @@ const styles = StyleSheet.create({
     backgroundColor: colors.primary,
   },
   heroEmergencyTagText: {
-    fontFamily: fontFamilies.nunitoSans.semibold,
+    ...nunitoSans.semibold,
     fontSize: 11,
     lineHeight: 14,
     color: colors.onPrimary,
@@ -536,7 +620,7 @@ const styles = StyleSheet.create({
     gap: 4,
   },
   headline: {
-    fontFamily: fontFamilies.nunitoSans.bold,
+    ...nunitoSans.bold,
     fontSize: 18,
     lineHeight: 22,
     color: colors.onboardingTitle,
@@ -547,7 +631,7 @@ const styles = StyleSheet.create({
     gap: 4,
   },
   locationText: {
-    fontFamily: fontFamilies.nunitoSans.medium,
+    ...nunitoSans.medium,
     fontSize: 14,
     lineHeight: 18,
     color: '#4E4E4E',
@@ -572,16 +656,19 @@ const styles = StyleSheet.create({
     backgroundColor: '#FFE6E3',
   },
   segmentLabel: {
-    fontFamily: fontFamilies.nunitoSans.regular,
+    ...nunitoSans.regular,
     fontSize: 14,
     lineHeight: 16,
     color: '#2E2E2E',
   },
   segmentLabelActive: {
-    fontFamily: fontFamilies.nunitoSans.semibold,
+    ...nunitoSans.semibold,
+  },
+  tabLoader: {
+    marginVertical: 24,
   },
   aboutBody: {
-    fontFamily: fontFamilies.nunitoSans.regular,
+    ...nunitoSans.regular,
     fontSize: 14,
     lineHeight: 18,
     color: '#4E4E4E',
@@ -590,7 +677,7 @@ const styles = StyleSheet.create({
     gap: 8,
   },
   servicesTitle: {
-    fontFamily: fontFamilies.nunitoSans.semibold,
+    ...nunitoSans.semibold,
     fontSize: 16,
     lineHeight: 22,
     color: '#3E4143',
@@ -600,7 +687,6 @@ const styles = StyleSheet.create({
     flexWrap: 'wrap',
     gap: 10,
   },
-  /** Figma 138-3015: blur contact + business until login; map stays clear. */
   lockedSection: {
     position: 'relative',
     overflow: 'hidden',
@@ -609,9 +695,6 @@ const styles = StyleSheet.create({
   },
   lockedInner: {
     gap: 12,
-  },
-  lockedInnerBlocked: {
-    pointerEvents: 'none',
   },
   lockedBlur: {
     ...StyleSheet.absoluteFillObject,
@@ -624,7 +707,6 @@ const styles = StyleSheet.create({
   },
   loginBtn: {
     width: '60%',
-    // height: 56,
   },
   contactCard: {
     borderWidth: 1,
@@ -654,14 +736,18 @@ const styles = StyleSheet.create({
     borderColor: '#E8E8E8',
     backgroundColor: colors.surface,
   },
+  contactAvatarPlaceholder: {
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
   contactName: {
-    fontFamily: fontFamilies.nunitoSans.semibold,
+    ...nunitoSans.semibold,
     fontSize: 16,
     lineHeight: 22,
     color: colors.onboardingTitle,
   },
   contactPhone: {
-    fontFamily: fontFamilies.nunitoSans.regular,
+    ...nunitoSans.regular,
     fontSize: 14,
     lineHeight: 18,
     color: '#2D3133',
@@ -706,64 +792,16 @@ const styles = StyleSheet.create({
     minWidth: 0,
   },
   businessLabel: {
-    fontFamily: fontFamilies.nunitoSans.regular,
+    ...nunitoSans.regular,
     fontSize: 12,
     lineHeight: 16,
     color: '#5D5D5D',
   },
   businessValue: {
-    fontFamily: fontFamilies.nunitoSans.semibold,
+    ...nunitoSans.semibold,
     fontSize: 14,
     lineHeight: 18,
     color: colors.onboardingTitle,
     marginTop: 2,
-  },
-  mapCard: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 8,
-    paddingHorizontal: 17,
-    paddingVertical: 20,
-    borderRadius: 14,
-    borderWidth: 1,
-    borderColor: '#FFE9E7',
-    backgroundColor: '#FFF6F5',
-  },
-  mapThumbWrap: {
-    width: 68,
-    height: 60,
-    position: 'relative',
-  },
-  mapThumb: {
-    width: 60,
-    height: 60,
-    borderRadius: 8.68,
-    borderWidth: 1,
-    borderColor: '#CACACA',
-  },
-  mapPin: {
-    position: 'absolute',
-    right: 0,
-    bottom: 0,
-    width: 20,
-    height: 20,
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
-  mapTextCol: {
-    flex: 1,
-    gap: 4,
-  },
-  mapTitle: {
-    fontFamily: fontFamilies.nunitoSans.medium,
-    fontSize: 14,
-    lineHeight: 18,
-    color: '#3E4143',
-  },
-  mapCta: {
-    fontFamily: fontFamilies.nunitoSans.semibold,
-    fontSize: 12,
-    lineHeight: 16,
-    color: colors.primary,
   },
 });

@@ -1,22 +1,73 @@
-import { useCallback, useMemo } from 'react';
-import { FlatList, Pressable, StyleSheet, Text, View } from 'react-native';
+import { useCallback, useEffect, useMemo } from 'react';
+import {
+  ActivityIndicator,
+  FlatList,
+  Pressable,
+  StyleSheet,
+  Text,
+  View,
+} from 'react-native';
 import type { NativeStackScreenProps } from '@react-navigation/native-stack';
 import type { NativeStackNavigationProp } from '@react-navigation/native-stack';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
-import { Icon, NearYouCard } from '../../components/ui';
-import { providersForCategory } from '../../data/mockProviders';
+import { Icon, NearYouCard, type NearYouItem } from '../../components/ui';
+import type { TradieListItem, TradieRegion } from '../../api/tradieTypes';
 import type { CategoryStackParamList } from '../../navigation/categoryTypes';
 import type { RootStackParamList } from '../../navigation/types';
-import { colors, fontFamilies } from '../../theme';
+import {
+  useAppDispatch,
+  useAppSelector,
+  selectTradieList,
+  selectTradieListStatus,
+  selectTradieListError,
+} from '../../store/hooks';
+import { clearTradieList, fetchTradiesThunk } from '../../store/slices/tradiesSlice';
+import { colors, fontFamilies, nunitoSans } from '../../theme';
+import { resolveMediaUrl } from '../../utils/mediaUrl';
 
 type Props = NativeStackScreenProps<CategoryStackParamList, 'ServiceList'>;
+
+const FALLBACK_IMAGE = require('../../../assets/first.png');
+
+function formatTradieRegions(regions: TradieRegion[] | undefined): string {
+  if (!regions?.length) return '';
+  return regions.map((r) => r.name).join(', ');
+}
+
+function toNearYouItem(tradie: TradieListItem): NearYouItem {
+  const imageUri = tradie.businessImage
+    ? (resolveMediaUrl(tradie.businessImage) ?? tradie.businessImage)
+    : undefined;
+  return {
+    id: tradie.id,
+    image: imageUri ? { uri: imageUri } : FALLBACK_IMAGE,
+    title: tradie.businessName,
+    category: tradie.services[0]?.name ?? '',
+    status: tradie.isOpen ? 'open' : 'closed',
+    region: formatTradieRegions(tradie.regions),
+    rating: String(tradie.averageRating ?? 0),
+    reviews: `(${tradie.totalRatingCount ?? 0})`,
+    isFavourite: tradie.isFavourite === true,
+  };
+}
 
 export function ServiceListScreen({ navigation, route }: Props) {
   const insets = useSafeAreaInsets();
   const { categoryId, categoryTitle } = route.params;
   const tabBarSpace = useMemo(() => 88 + Math.max(insets.bottom, 14), [insets.bottom]);
+  const dispatch = useAppDispatch();
+  const tradieList = useAppSelector(selectTradieList);
+  const listStatus = useAppSelector(selectTradieListStatus);
+  const listError = useAppSelector(selectTradieListError);
 
-  const items = useMemo(() => providersForCategory(categoryId), [categoryId]);
+  useEffect(() => {
+    dispatch(clearTradieList());
+    dispatch(fetchTradiesThunk({ categoryId }));
+  }, [dispatch, categoryId]);
+
+  const items = useMemo<NearYouItem[]>(() => tradieList.map(toNearYouItem), [tradieList]);
+
+  const isLoading = listStatus === 'loading';
 
   const openServiceDetail = useCallback(
     (providerId: string) => {
@@ -43,18 +94,26 @@ export function ServiceListScreen({ navigation, route }: Props) {
         <View style={styles.topNavSpacer} />
       </View>
 
-      <FlatList
-        data={items}
-        keyExtractor={(item) => item.id}
-        contentContainerStyle={[styles.list, { paddingBottom: tabBarSpace }]}
-        showsVerticalScrollIndicator={false}
-        ListEmptyComponent={
-          <Text style={styles.empty}>No services in this category yet.</Text>
-        }
-        renderItem={({ item }) => (
-          <NearYouCard item={item} onPress={() => openServiceDetail(item.id)} />
-        )}
-      />
+      {isLoading ? (
+        <View style={styles.loadingWrap}>
+          <ActivityIndicator size="large" color={colors.primary} />
+        </View>
+      ) : listError ? (
+        <Text style={styles.error}>{listError}</Text>
+      ) : (
+        <FlatList
+          data={items}
+          keyExtractor={(item) => item.id}
+          contentContainerStyle={[styles.list, { paddingBottom: tabBarSpace }]}
+          showsVerticalScrollIndicator={false}
+          ListEmptyComponent={
+            <Text style={styles.empty}>No tradies in this category yet.</Text>
+          }
+          renderItem={({ item }) => (
+            <NearYouCard item={item} onPress={() => openServiceDetail(item.id)} />
+          )}
+        />
+      )}
     </View>
   );
 }
@@ -77,7 +136,7 @@ const styles = StyleSheet.create({
   },
   topTitle: {
     flex: 1,
-    fontFamily: fontFamilies.nunitoSans.semibold,
+    ...nunitoSans.semibold,
     fontSize: 18,
     lineHeight: 24,
     color: colors.onboardingTitle,
@@ -87,10 +146,22 @@ const styles = StyleSheet.create({
     gap: 12,
     paddingTop: 8,
   },
+  loadingWrap: {
+    flex: 1,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
   empty: {
-    fontFamily: fontFamilies.nunitoSans.regular,
+    ...nunitoSans.regular,
     fontSize: 14,
     color: colors.label,
+    textAlign: 'center',
+    marginTop: 32,
+  },
+  error: {
+    ...nunitoSans.regular,
+    fontSize: 14,
+    color: colors.error,
     textAlign: 'center',
     marginTop: 32,
   },

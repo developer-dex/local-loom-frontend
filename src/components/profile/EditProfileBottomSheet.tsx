@@ -11,6 +11,7 @@ import {
   StyleSheet,
   Text,
   View,
+  ActivityIndicator,
 } from 'react-native';
 import * as ImagePicker from 'expo-image-picker';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
@@ -18,6 +19,9 @@ import { AppButton } from '../ui/AppButton';
 import { AppTextField } from '../ui/AppTextField';
 import { Icon } from '../ui/Icon';
 import { colors, fontFamilies } from '../../theme';
+import { useAppDispatch } from '../../store/hooks';
+import { setAuthUser } from '../../store/slices/authSlice';
+import { updateUserAvatarThunk, updateUserMeThunk } from '../../store/slices/usersSlice';
 
 export type EditProfilePayload = {
   name: string;
@@ -31,6 +35,8 @@ export type EditProfileBottomSheetProps = {
   initialName: string;
   initialPhone: string;
   initialAvatarUri: string;
+  /** When false, save only updates local state (guest). */
+  isLoggedIn?: boolean;
   onSaved?: (data: EditProfilePayload) => void;
 };
 
@@ -41,18 +47,25 @@ const pickerOptions: ImagePicker.ImagePickerOptions = {
   quality: 0.85,
 };
 
+function isLocalImageUri(uri: string): boolean {
+  return uri.startsWith('file://') || uri.startsWith('content://') || uri.startsWith('ph://');
+}
+
 export function EditProfileBottomSheet({
   visible,
   onClose,
   initialName,
   initialPhone,
   initialAvatarUri,
+  isLoggedIn = false,
   onSaved,
 }: EditProfileBottomSheetProps) {
   const insets = useSafeAreaInsets();
+  const dispatch = useAppDispatch();
   const [name, setName] = useState(initialName);
   const [phone, setPhone] = useState(initialPhone);
   const [photoUri, setPhotoUri] = useState<string>(initialAvatarUri);
+  const [saving, setSaving] = useState(false);
 
   useEffect(() => {
     if (visible) {
@@ -110,18 +123,56 @@ export function EditProfileBottomSheet({
     }
   }, [launchCamera, launchLibrary]);
 
-  const onSave = useCallback(() => {
+  const onSave = useCallback(async () => {
+    const trimmedName = name.trim();
+    const trimmedPhone = phone.trim();
     const payload: EditProfilePayload = {
-      name: name.trim(),
-      phone: phone.trim(),
+      name: trimmedName,
+      phone: trimmedPhone,
       profilePhotoUri: photoUri.trim() || null,
     };
-    console.log('Edit profile — save', payload);
-    onSaved?.(payload);
-    onClose();
-  }, [name, phone, photoUri, onClose, onSaved]);
+
+    if (!isLoggedIn) {
+      onSaved?.(payload);
+      onClose();
+      return;
+    }
+
+    setSaving(true);
+    try {
+      const updateResult = await dispatch(
+        updateUserMeThunk({ name: trimmedName, phone: trimmedPhone }),
+      );
+      if (updateUserMeThunk.rejected.match(updateResult)) {
+        Alert.alert('Update failed', (updateResult.payload as string) ?? 'Could not save profile.');
+        return;
+      }
+
+      let user = updateResult.payload;
+      const avatarChanged = isLocalImageUri(photoUri);
+      if (avatarChanged) {
+        const avatarResult = await dispatch(updateUserAvatarThunk(photoUri));
+        if (updateUserAvatarThunk.rejected.match(avatarResult)) {
+          Alert.alert('Avatar', (avatarResult.payload as string) ?? 'Could not update profile photo.');
+        } else {
+          user = avatarResult.payload;
+        }
+      }
+
+      dispatch(setAuthUser(user));
+      onSaved?.({
+        name: user.name,
+        phone: user.phone,
+        profilePhotoUri: user.avatar,
+      });
+      onClose();
+    } finally {
+      setSaving(false);
+    }
+  }, [name, phone, photoUri, onClose, onSaved, isLoggedIn, dispatch]);
 
   const inputColor = { color: colors.onboardingTitle };
+  const avatarSource = photoUri ? { uri: photoUri } : require('../../../assets/signup/customer.png');
 
   return (
     <Modal
@@ -155,7 +206,7 @@ export function EditProfileBottomSheet({
               >
                 <View style={styles.avatarWrap}>
                   <View style={styles.avatarClip}>
-                    <Image source={{ uri: photoUri }} style={styles.avatarImage} resizeMode="cover" />
+                    <Image source={avatarSource} style={styles.avatarImage} resizeMode="cover" />
                   </View>
                   <View style={styles.avatarFab} pointerEvents="none">
                     <Icon name="album-02" width={18} height={18} color={colors.onPrimary} />
@@ -185,7 +236,13 @@ export function EditProfileBottomSheet({
                 />
               </View>
 
-              <AppButton title="Save" onPress={onSave} containerStyle={styles.saveBtn} />
+              <AppButton
+                title={saving ? 'Saving…' : 'Save'}
+                onPress={() => void onSave()}
+                disabled={saving}
+                containerStyle={styles.saveBtn}
+              />
+              {saving ? <ActivityIndicator style={styles.spinner} color={colors.primary} /> : null}
             </ScrollView>
           </View>
         </View>
@@ -291,5 +348,8 @@ const styles = StyleSheet.create({
   },
   saveBtn: {
     marginTop: 4,
+  },
+  spinner: {
+    marginTop: 12,
   },
 });

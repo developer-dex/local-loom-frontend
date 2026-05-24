@@ -3,7 +3,7 @@ import { Linking, Pressable, StyleSheet, Text, View } from 'react-native';
 import { useNavigation } from '@react-navigation/native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { Icon } from '../../components/ui';
-import { colors, fontFamilies } from '../../theme';
+import { colors, fontFamilies, nunitoSans } from '../../theme';
 
 const SUPPORT_EMAIL = 'support@localloom.com';
 const SUPPORT_PHONE_DISPLAY = '+91 12345 67890';
@@ -156,13 +156,13 @@ const styles = StyleSheet.create({
     minWidth: 0,
   },
   cardTitle: {
-    fontFamily: fontFamilies.nunitoSans.bold,
+    ...nunitoSans.bold,
     fontSize: 14,
     lineHeight: 18,
     color: '#252525',
   },
   cardSubtitle: {
-    fontFamily: fontFamilies.nunitoSans.regular,
+    ...nunitoSans.regular,
     fontSize: 12,
     lineHeight: 16,
     color: '#717171',

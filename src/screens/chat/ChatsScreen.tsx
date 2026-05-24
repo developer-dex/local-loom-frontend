@@ -1,4 +1,4 @@
-import { useMemo, useState } from 'react';
+import { useCallback, useMemo, useState } from 'react';
 import {
   FlatList,
   Image,
@@ -12,9 +12,10 @@ import {
 import { useNavigation } from '@react-navigation/native';
 import type { NativeStackNavigationProp } from '@react-navigation/native-stack';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
-import { Icon } from '../../components/ui';
+import { AppButton, Icon } from '../../components/ui';
+import { useAuth } from '../../context/AuthContext';
 import type { RootStackParamList } from '../../navigation/types';
-import { colors, fontFamilies, spacing } from '../../theme';
+import { colors, fontFamilies, nunitoSans, spacing } from '../../theme';
 
 type ChatRow = {
   id: string;
@@ -55,11 +56,19 @@ const MOCK_CHATS: ChatRow[] = [
 export function ChatsScreen() {
   const insets = useSafeAreaInsets();
   const navigation = useNavigation();
+  const { isLoggedIn } = useAuth();
   const [query, setQuery] = useState('');
 
+  const getRootNav = useCallback(() => {
+    return navigation.getParent<NativeStackNavigationProp<RootStackParamList>>();
+  }, [navigation]);
+
+  const openLogin = useCallback(() => {
+    getRootNav()?.navigate('SignIn');
+  }, [getRootNav]);
+
   const openChat = (item: ChatRow) => {
-    const root = navigation.getParent<NativeStackNavigationProp<RootStackParamList>>();
-    root?.navigate('ChatDetail', { chatId: item.id, name: item.name, avatarUri: item.avatarUri });
+    getRootNav()?.navigate('ChatDetail', { chatId: item.id, name: item.name, avatarUri: item.avatarUri });
   };
 
   const data = useMemo(() => {
@@ -116,39 +125,60 @@ export function ChatsScreen() {
         <Text style={styles.headerTitle}>Chat</Text>
       </View>
 
-      <View style={styles.searchWrap}>
-        <View style={styles.searchField}>
-          <Icon name="search-01" width={18} height={18} color={colors.placeholder} />
-          <TextInput
-            value={query}
-            onChangeText={setQuery}
-            placeholder="Search"
-            placeholderTextColor={colors.placeholder}
-            style={styles.searchInput}
-            returnKeyType="search"
-            autoCapitalize="none"
-            autoCorrect={false}
+      {!isLoggedIn ? (
+        <View style={[styles.guestState, { paddingBottom: Math.max(insets.bottom, 14) + spacing.lg }]}>
+          <View style={styles.guestIconWrap}>
+            <Icon name="bubble-chat" width={32} height={32} color={colors.primary} />
+          </View>
+          <Text style={styles.guestTitle}>Sign in to view your chats</Text>
+          <Text style={styles.guestBody}>
+            Log in to message tradies and keep track of your conversations.
+          </Text>
+          <AppButton
+            title="Login"
+            variant="primary"
+            onPress={openLogin}
+            accessibilityLabel="Log in to view chats"
+            containerStyle={styles.loginBtn}
           />
         </View>
-      </View>
-
-      <FlatList
-        data={data}
-        keyExtractor={(i) => i.id}
-        renderItem={renderItem}
-        contentContainerStyle={[
-          styles.listContent,
-          { paddingBottom: Math.max(insets.bottom, 14) + spacing.lg },
-        ]}
-        showsVerticalScrollIndicator={false}
-        ItemSeparatorComponent={() => <View style={styles.separator} />}
-        ListEmptyComponent={
-          <View style={styles.empty}>
-            <Text style={styles.emptyTitle}>No chats found</Text>
-            <Text style={styles.emptyBody}>Try a different search.</Text>
+      ) : (
+        <>
+          <View style={styles.searchWrap}>
+            <View style={styles.searchField}>
+              <Icon name="search-01" width={18} height={18} color={colors.placeholder} />
+              <TextInput
+                value={query}
+                onChangeText={setQuery}
+                placeholder="Search"
+                placeholderTextColor={colors.placeholder}
+                style={styles.searchInput}
+                returnKeyType="search"
+                autoCapitalize="none"
+                autoCorrect={false}
+              />
+            </View>
           </View>
-        }
-      />
+
+          <FlatList
+            data={data}
+            keyExtractor={(i) => i.id}
+            renderItem={renderItem}
+            contentContainerStyle={[
+              styles.listContent,
+              { paddingBottom: Math.max(insets.bottom, 14) + spacing.lg },
+            ]}
+            showsVerticalScrollIndicator={false}
+            ItemSeparatorComponent={() => <View style={styles.separator} />}
+            ListEmptyComponent={
+              <View style={styles.empty}>
+                <Text style={styles.emptyTitle}>No chats found</Text>
+                <Text style={styles.emptyBody}>Try a different search.</Text>
+              </View>
+            }
+          />
+        </>
+      )}
     </View>
   );
 }
@@ -220,7 +250,7 @@ const styles = StyleSheet.create({
   rowTop: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', gap: 12 },
   name: {
     flex: 1,
-    fontFamily: fontFamilies.nunitoSans.medium,
+    ...nunitoSans.medium,
     fontSize: 16,
     lineHeight: 20,
     color: colors.onboardingTitle,
@@ -234,12 +264,12 @@ const styles = StyleSheet.create({
   rowBottom: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', gap: 12 },
   lastMessage: {
     flex: 1,
-    fontFamily: fontFamilies.nunitoSans.regular,
+    ...nunitoSans.regular,
     fontSize: 13,
     lineHeight: 16,
     color: colors.placeholder,
   },
-  lastMessageUnread: { color: colors.onboardingTitle, fontFamily: fontFamilies.nunitoSans.medium },
+  lastMessageUnread: { color: colors.onboardingTitle, ...nunitoSans.medium },
   unreadPill: {
     minWidth: 22,
     height: 22,
@@ -268,6 +298,41 @@ const styles = StyleSheet.create({
     fontSize: 13,
     lineHeight: 18,
     color: colors.placeholder,
+  },
+  guestState: {
+    flex: 1,
+    alignItems: 'center',
+    justifyContent: 'center',
+    paddingHorizontal: 32,
+    gap: 12,
+  },
+  guestIconWrap: {
+    width: 72,
+    height: 72,
+    borderRadius: 36,
+    backgroundColor: 'rgba(0,0,0,0.04)',
+    alignItems: 'center',
+    justifyContent: 'center',
+    marginBottom: 8,
+  },
+  guestTitle: {
+    fontFamily: fontFamilies.inter.semibold,
+    fontSize: 18,
+    lineHeight: 24,
+    color: colors.onboardingTitle,
+    textAlign: 'center',
+  },
+  guestBody: {
+    ...nunitoSans.regular,
+    fontSize: 14,
+    lineHeight: 20,
+    color: colors.onboardingBody,
+    textAlign: 'center',
+    marginBottom: 8,
+  },
+  loginBtn: {
+    minWidth: 160,
+    marginTop: 4,
   },
   pressed: { opacity: 0.7 },
 });

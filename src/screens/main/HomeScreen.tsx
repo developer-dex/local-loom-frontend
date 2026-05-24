@@ -1,103 +1,221 @@
-import { useCallback, useMemo, useState } from 'react';
-import { useNavigation } from '@react-navigation/native';
+import { useCallback, useEffect, useMemo, useState } from 'react';
+import { useNavigation, useRoute, type RouteProp } from '@react-navigation/native';
+import type { BottomTabNavigationProp } from '@react-navigation/bottom-tabs';
+import type { CompositeNavigationProp } from '@react-navigation/native';
 import type { NativeStackNavigationProp } from '@react-navigation/native-stack';
-import { FlatList, Image, Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
+import { ActivityIndicator, FlatList, Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
+import { LinearGradient } from 'expo-linear-gradient';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
-import { Icon, NearYouCard, PillChip, type NearYouItem } from '../../components/ui';
+import { Icon, NearYouCard, PillChip, RemoteImage, type NearYouItem } from '../../components/ui';
+import type { MainTabParamList } from '../../navigation/mainTabTypes';
 import type { RootStackParamList } from '../../navigation/types';
-import { colors, fontFamilies } from '../../theme';
-import { useAppSelector, selectAuthUser } from '../../store/hooks';
+import type { FetchTradiesParams } from '../../api/tradies';
+import { colors, fontFamilies, nunitoSans } from '../../theme';
+import {
+  useAppSelector,
+  useAppDispatch,
+  selectAuthUser,
+  selectCategories,
+  selectCategoriesLoading,
+  selectTradieList,
+  selectTradieListStatus,
+} from '../../store/hooks';
+import { fetchCategoriesThunk } from '../../store/slices/categoriesSlice';
+import { clearTradieList, fetchTradiesThunk } from '../../store/slices/tradiesSlice';
+import type { TradieListItem, TradieRegion } from '../../api/tradieTypes';
+import { resolveMediaUrl } from '../../utils/mediaUrl';
 
-/** Remote assets — replace avatar with a local file when ready. */
+function formatTradieRegions(regions: TradieRegion[] | undefined): string {
+  if (!regions?.length) return '';
+  return regions.map((r) => r.name).join(', ');
+}
 
-const CATEGORIES: string[] = [
-  'Plumber',
-  'Electrician',
-  'AC Repair',
-  'Services',
-  'Automotive',
-  "Men's Salon",
-  'Carpenter',
-  'Cleaner',
-  'Painter',
-];
+type HomeNav = CompositeNavigationProp<
+  BottomTabNavigationProp<MainTabParamList>,
+  NativeStackNavigationProp<RootStackParamList>
+>;
 
-const NEAR_YOU: NearYouItem[] = [
-  {
-    id: '1',
-    image: require('../../../assets/first.png'),
-    title: 'John The Plumber',
-    category: 'Plumber',
-    status: 'open',
-    distance: 'Melbourne, Australia',
-    rating: '5.0',
-    reviews: '(127)',
-  },
-  {
-    id: '2',
-    image: require('../../../assets/second.png'),
-    title: "Mark's electical",
-    category: 'Electrician',
-    status: 'open',
-    distance: 'Adelaide, Australia',
-    rating: '4.7',
-    reviews: '(89)',
-  },
-  {
-    id: '3',
-    image: require('../../../assets/third.png'),
-    title: 'Herry Ac works',
-    category: 'AC Repair',
-    status: 'closed',
-    distance: 'Sydney, Australia',
-    rating: '4.2',
-    reviews: '(56)',
-  },
-];
+type HomeRouteProp = RouteProp<MainTabParamList, 'Home'>;
+
+/** Fallback image when the tradie has no businessImage. */
+const FALLBACK_IMAGE = require('../../../assets/first.png');
+const HEADER_AVATAR_FALLBACK = require('../../../assets/signup/customer.png');
+
+/** Map a TradieListItem to the NearYouItem shape expected by NearYouCard. */
+function toNearYouItem(tradie: TradieListItem): NearYouItem {
+  const imageUri = tradie.businessImage
+    ? (resolveMediaUrl(tradie.businessImage) ?? tradie.businessImage)
+    : undefined;
+  return {
+    id: tradie.id,
+    image: imageUri ? { uri: imageUri } : FALLBACK_IMAGE,
+    title: tradie.businessName,
+    category: tradie.services[0]?.name ?? '',
+    status: tradie.isOpen ? 'open' : 'closed',
+    region: formatTradieRegions(tradie.regions),
+    rating: String(tradie.averageRating ?? 0),
+    reviews: `(${tradie.totalRatingCount ?? 0})`,
+    isFavourite: tradie.isFavourite === true,
+  };
+}
 
 export function HomeScreen() {
   const insets = useSafeAreaInsets();
-  const navigation = useNavigation();
+  const navigation = useNavigation<HomeNav>();
+  const route = useRoute<HomeRouteProp>();
+  const dispatch = useAppDispatch();
   const tabBarSpace = useMemo(() => 88 + Math.max(insets.bottom, 14), [insets.bottom]);
-  const [selectedCategory, setSelectedCategory] = useState<string | null>(null);
+  const [selectedCategoryId, setSelectedCategoryId] = useState<string | null>(
+    () => route.params?.categoryId ?? null,
+  );
+  const [selectedRegionId, setSelectedRegionId] = useState<string | null>(
+    () => route.params?.regionId ?? null,
+  );
+  const [aiBannerPrompt, setAiBannerPrompt] = useState<string | null>(
+    () => route.params?.aiPrompt ?? null,
+  );
   const authUser = useAppSelector(selectAuthUser);
+  const categories = useAppSelector(selectCategories);
+  const categoriesLoading = useAppSelector(selectCategoriesLoading);
+  const tradieList = useAppSelector(selectTradieList);
+  const listStatus = useAppSelector(selectTradieListStatus);
 
   const displayName = authUser?.name ?? 'Guest';
-  const displayAvatar = authUser?.avatar ?? null;
+  const displayAvatar = useMemo(() => {
+    if (!authUser?.avatar) return null;
+    return resolveMediaUrl(authUser.avatar) ?? authUser.avatar;
+  }, [authUser?.avatar]);
+
+  const popularCategories = useMemo(
+    () => [...categories].filter((c) => c.isActive).sort((a, b) => a.sortOrder - b.sortOrder),
+    [categories],
+  );
+
+  useEffect(() => {
+    dispatch(fetchCategoriesThunk());
+  }, [dispatch]);
+
+  useEffect(() => {
+    const params = route.params;
+    if (params?.categoryId) setSelectedCategoryId(params.categoryId);
+    if (params?.regionId) setSelectedRegionId(params.regionId);
+    if (params?.aiPrompt) setAiBannerPrompt(params.aiPrompt);
+  }, [route.params?.categoryId, route.params?.regionId, route.params?.aiPrompt]);
+
+  const tradieFetchParams = useMemo((): FetchTradiesParams | undefined => {
+    const params: FetchTradiesParams = {};
+    if (selectedCategoryId) params.categoryId = selectedCategoryId;
+    if (selectedRegionId) params.regionId = selectedRegionId;
+    return Object.keys(params).length > 0 ? params : undefined;
+  }, [selectedCategoryId, selectedRegionId]);
+
+  const isAiFilteredMode = Boolean(aiBannerPrompt ?? route.params?.aiPrompt);
+
+  useEffect(() => {
+    if (isAiFilteredMode) {
+      const categoryId = selectedCategoryId ?? route.params?.categoryId;
+      const regionId = selectedRegionId ?? route.params?.regionId;
+      if (!categoryId || !regionId) return;
+
+      dispatch(clearTradieList());
+      dispatch(fetchTradiesThunk({ categoryId, regionId }));
+      return;
+    }
+
+    dispatch(fetchTradiesThunk(tradieFetchParams));
+  }, [
+    dispatch,
+    isAiFilteredMode,
+    selectedCategoryId,
+    selectedRegionId,
+    route.params?.categoryId,
+    route.params?.regionId,
+    tradieFetchParams,
+  ]);
+
+  const selectedCategoryName = useMemo(() => {
+    if (!selectedCategoryId) return null;
+    return categories.find((c) => c.id === selectedCategoryId)?.name ?? null;
+  }, [categories, selectedCategoryId]);
 
   const openServiceDetail = useCallback(
     (providerId: string) => {
-      const parent = navigation.getParent<NativeStackNavigationProp<RootStackParamList>>();
-      parent?.navigate('ServiceDetail', { providerId });
+      const root = navigation.getParent<NativeStackNavigationProp<RootStackParamList>>();
+      root?.navigate('ServiceDetail', { providerId });
     },
     [navigation],
   );
+
+  const goToCategoryTab = useCallback(() => {
+    navigation.navigate('Category');
+  }, [navigation]);
+
+  const goToChatTab = useCallback(() => {
+    navigation.navigate('Chat');
+  }, [navigation]);
+
+  const openAiSearch = useCallback(() => {
+    navigation.getParent<NativeStackNavigationProp<RootStackParamList>>()?.navigate('AiSearch');
+  }, [navigation]);
+
+  const clearAiFilters = useCallback(() => {
+    setSelectedCategoryId(null);
+    setSelectedRegionId(null);
+    setAiBannerPrompt(null);
+    navigation.setParams({ categoryId: undefined, regionId: undefined, aiPrompt: undefined });
+  }, [navigation]);
+
+  const nearYouItems = useMemo<NearYouItem[]>(() => tradieList.map(toNearYouItem), [tradieList]);
+
+  const isLoading = listStatus === 'loading';
 
   return (
     <View style={[styles.screen, { paddingTop: insets.top }]}>
       <View style={styles.header}>
         <View style={styles.headerLeft}>
-          {displayAvatar ? (
-            <Image source={{ uri: displayAvatar }} style={styles.avatar} />
-          ) : (
-            <View style={[styles.avatar, styles.avatarPlaceholder]}>
-              <Icon name="user-03" width={22} height={22} color={colors.placeholder} />
-            </View>
-          )}
+          <RemoteImage
+            uri={displayAvatar}
+            fallback={HEADER_AVATAR_FALLBACK}
+            style={styles.avatar}
+            containerStyle={[styles.avatar, !displayAvatar && styles.avatarPlaceholder]}
+            resizeMode="cover"
+            accessibilityLabel="Your profile photo"
+          />
           <View style={styles.headerTextCol}>
             <Text style={styles.userName} numberOfLines={1}>
               {displayName}
             </Text>
-            <Text style={styles.userLocation} numberOfLines={1}>
+            {/* <Text style={styles.userLocation} numberOfLines={1}>
               Building 1234, Road 5678..
-            </Text>
+            </Text> */}
           </View>
         </View>
         <View style={styles.headerActions}>
+          <Pressable
+            hitSlop={8}
+            accessibilityRole="button"
+            accessibilityLabel="AI search"
+            onPress={openAiSearch}
+            style={({ pressed }) => [pressed && styles.pressed]}
+          >
+            <LinearGradient
+              colors={['#F58E83', '#C9A0DC']}
+              start={{ x: 0, y: 0 }}
+              end={{ x: 1, y: 1 }}
+              style={styles.aiChip}
+            >
+              <Text style={styles.aiChipText}>✦ AI</Text>
+            </LinearGradient>
+          </Pressable>
           <Pressable hitSlop={8} accessibilityRole="button" accessibilityLabel="Notifications">
             <Icon name="notification-01" width={24} height={24} color={colors.onboardingTitle} />
           </Pressable>
-          <Pressable hitSlop={8} accessibilityRole="button" accessibilityLabel="Messages">
+          <Pressable
+            hitSlop={8}
+            accessibilityRole="button"
+            accessibilityLabel="Messages"
+            onPress={goToChatTab}
+          >
             <Icon name="bubble-chat" width={24} height={24} color={colors.onboardingTitle} />
           </Pressable>
         </View>
@@ -109,39 +227,85 @@ export function HomeScreen() {
         keyboardShouldPersistTaps="handled"
         nestedScrollEnabled
       >
+        {aiBannerPrompt ? (
+          <View style={styles.aiBanner}>
+            <View style={styles.aiBannerCopy}>
+              <Text style={styles.aiBannerTitle}>AI results</Text>
+              <Text style={styles.aiBannerText} numberOfLines={2}>
+                "{aiBannerPrompt}"
+                {selectedCategoryName ? ` · ${selectedCategoryName}` : ''}
+              </Text>
+            </View>
+            <Pressable
+              onPress={clearAiFilters}
+              hitSlop={8}
+              accessibilityRole="button"
+              accessibilityLabel="Clear AI filters"
+            >
+              <Icon name="cancel-01" width={18} height={18} color={colors.primary} />
+            </Pressable>
+          </View>
+        ) : null}
+
         <View style={styles.section}>
           <View style={styles.sectionHeader}>
             <Text style={styles.sectionTitle}>Popular Categories</Text>
-            <Pressable>
+            <Pressable
+              accessibilityRole="button"
+              accessibilityLabel="See all categories"
+              onPress={goToCategoryTab}
+            >
               <Text style={styles.seeAll}>See all</Text>
             </Pressable>
           </View>
-          <FlatList
-            data={CATEGORIES}
-            horizontal
-            showsHorizontalScrollIndicator={false}
-            keyExtractor={(item) => item}
-            extraData={selectedCategory}
-            renderItem={({ item }) => (
-              <PillChip
-                variant="home"
-                label={item}
-                selected={selectedCategory === item}
-                onPress={() => setSelectedCategory(item)}
-              />
-            )}
-            contentContainerStyle={styles.categoriesRow}
-            style={styles.categoriesList}
-          />
+          {categoriesLoading && popularCategories.length === 0 ? (
+            <ActivityIndicator color={colors.primary} style={styles.categoriesLoader} />
+          ) : (
+            <FlatList
+              data={popularCategories}
+              horizontal
+              showsHorizontalScrollIndicator={false}
+              keyExtractor={(item) => item.id}
+              extraData={selectedCategoryId}
+              renderItem={({ item }) => (
+                <PillChip
+                  variant="home"
+                  label={item.name}
+                  selected={selectedCategoryId === item.id}
+                  onPress={() =>
+                    setSelectedCategoryId((prev) => (prev === item.id ? null : item.id))
+                  }
+                />
+              )}
+              contentContainerStyle={styles.categoriesRow}
+              style={styles.categoriesList}
+            />
+          )}
         </View>
 
         <View style={styles.section}>
           <Text style={styles.sectionTitleNear}>Near You</Text>
-          <View style={styles.nearList}>
-            {NEAR_YOU.map((item) => (
-              <NearYouCard key={item.id} item={item} onPress={() => openServiceDetail(item.id)} />
-            ))}
-          </View>
+          {isLoading ? (
+            <ActivityIndicator
+              size="large"
+              color={colors.primary}
+              style={styles.loader}
+              accessibilityLabel="Loading tradies"
+            />
+          ) : (
+            <View style={styles.nearList}>
+              {nearYouItems.map((item) => (
+                <NearYouCard
+                  key={item.id}
+                  item={item}
+                  onPress={() => openServiceDetail(item.id)}
+                />
+              ))}
+              {nearYouItems.length === 0 && listStatus === 'succeeded' ? (
+                <Text style={styles.emptyText}>No tradies found.</Text>
+              ) : null}
+            </View>
+          )}
         </View>
       </ScrollView>
     </View>
@@ -155,7 +319,6 @@ const styles = StyleSheet.create({
   },
   scrollContent: {
     paddingHorizontal: 20,
-    // paddingTop: 8,
     gap: 16,
   },
   header: {
@@ -165,7 +328,6 @@ const styles = StyleSheet.create({
     paddingHorizontal: 20,
     paddingVertical: 8,
     paddingBottom: 24,
-    // minHeight: 48,
   },
   headerLeft: {
     flex: 1,
@@ -198,7 +360,7 @@ const styles = StyleSheet.create({
     color: colors.onboardingTitle,
   },
   userLocation: {
-    fontFamily: fontFamilies.nunitoSans.regular,
+    ...nunitoSans.regular,
     fontSize: 14,
     lineHeight: 18,
     color: colors.onboardingBody,
@@ -206,66 +368,49 @@ const styles = StyleSheet.create({
   headerActions: {
     flexDirection: 'row',
     alignItems: 'center',
-    gap: 16,
+    gap: 12,
   },
-  heroCard: {
-    backgroundColor: '#FFF0EF',
-    borderRadius: 20,
-    padding: 16,
-    gap: 20,
-  },
-  greetingBlock: {
-    gap: 6,
-  },
-  greetingLine: {
-    flexDirection: 'row',
+  aiChip: {
+    paddingHorizontal: 10,
+    paddingVertical: 6,
+    borderRadius: 16,
+    minWidth: 48,
     alignItems: 'center',
-    flexWrap: 'wrap',
   },
-  greetingText: {
-    fontFamily: fontFamilies.nunitoSans.bold,
-    fontSize: 20,
-    lineHeight: 26,
+  aiChipText: {
+    fontFamily: fontFamilies.inter.semibold,
+    fontSize: 12,
+    lineHeight: 14,
+    color: colors.onPrimary,
   },
-  greetingHey: {
+  pressed: {
+    opacity: 0.75,
+  },
+  aiBanner: {
+    flexDirection: 'row',
+    alignItems: 'flex-start',
+    gap: 12,
+    padding: 14,
+    borderRadius: 14,
+    backgroundColor: '#FFF0EF',
+    borderWidth: 1,
+    borderColor: '#F1D9D6',
+  },
+  aiBannerCopy: {
+    flex: 1,
+    gap: 4,
+  },
+  aiBannerTitle: {
+    fontFamily: fontFamilies.inter.semibold,
+    fontSize: 13,
+    lineHeight: 16,
     color: colors.primary,
   },
-  greetingName: {
-    color: colors.onboardingTitle,
-  },
-  greetingEmoji: {
-    fontFamily: fontFamilies.manrope.semibold,
-    fontSize: 24,
-    lineHeight: 26,
-    color: colors.onboardingTitle,
-  },
-  greetingSub: {
-    fontFamily: fontFamilies.nunitoSans.regular,
-    fontSize: 12,
-    lineHeight: 16,
-    color: colors.placeholder,
-  },
-  searchBar: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 10,
-    height: 40,
-    paddingHorizontal: 12,
-    backgroundColor: colors.background,
-    borderRadius: 40,
-    shadowColor: '#000',
-    shadowOpacity: 0.07,
-    shadowRadius: 13,
-    shadowOffset: { width: 0, height: 2 },
-    elevation: 3,
-  },
-  searchInput: {
-    flex: 1,
-    padding: 0,
-    fontFamily: fontFamilies.nunitoSans.regular,
-    fontSize: 14,
+  aiBannerText: {
+    ...nunitoSans.regular,
+    fontSize: 13,
     lineHeight: 18,
-    color: colors.onboardingTitle,
+    color: colors.onboardingBody,
   },
   section: {
     gap: 12,
@@ -276,26 +421,29 @@ const styles = StyleSheet.create({
     justifyContent: 'space-between',
   },
   sectionTitle: {
-    fontFamily: fontFamilies.nunitoSans.medium,
+    ...nunitoSans.medium,
     fontSize: 16,
     lineHeight: 22,
     color: colors.onboardingTitle,
   },
   sectionTitleNear: {
-    fontFamily: fontFamilies.nunitoSans.medium,
+    ...nunitoSans.medium,
     fontSize: 16,
     lineHeight: 22,
     color: colors.onboardingTitle,
   },
   seeAll: {
-    fontFamily: fontFamilies.nunitoSans.regular,
+    ...nunitoSans.regular,
     fontSize: 12,
     lineHeight: 16,
     color: colors.label,
   },
-  /** `flexGrow: 0` keeps a horizontal `FlatList` from fighting the parent vertical `ScrollView` layout. */
   categoriesList: {
     flexGrow: 0,
+  },
+  categoriesLoader: {
+    alignSelf: 'flex-start',
+    marginVertical: 8,
   },
   categoriesRow: {
     flexDirection: 'row',
@@ -304,5 +452,16 @@ const styles = StyleSheet.create({
   },
   nearList: {
     gap: 12,
+  },
+  loader: {
+    marginVertical: 32,
+  },
+  emptyText: {
+    ...nunitoSans.regular,
+    fontSize: 14,
+    lineHeight: 20,
+    color: colors.label,
+    textAlign: 'center',
+    paddingVertical: 16,
   },
 });

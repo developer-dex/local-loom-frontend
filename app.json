@@ -35,7 +35,60 @@
           "enableFullScreenImage_legacy": true
         }
       ],
-      "expo-font",
+      [
+        "expo-font",
+        {
+          "fonts": [
+            "./assets/fonts/Inter_18pt-Regular.ttf",
+            "./assets/fonts/Inter_18pt-Medium.ttf",
+            "./assets/fonts/Inter_18pt-SemiBold.ttf",
+            "./assets/fonts/Inter_18pt-Bold.ttf",
+            "./assets/fonts/Manrope-Regular.ttf",
+            "./assets/fonts/Manrope-Medium.ttf",
+            "./assets/fonts/Manrope-SemiBold.ttf",
+            "./assets/fonts/Manrope-Bold.ttf",
+            "./assets/fonts/NunitoSans-Regular.ttf",
+            "./assets/fonts/NunitoSans-Medium.ttf",
+            "./assets/fonts/NunitoSans-SemiBold.ttf",
+            "./assets/fonts/NunitoSans-Bold.ttf",
+            "./assets/fonts/NunitoSans-ExtraBold.ttf"
+          ],
+          "android": {
+            "fonts": [
+              "./assets/fonts/Inter_18pt-Regular.ttf",
+              "./assets/fonts/Inter_18pt-Medium.ttf",
+              "./assets/fonts/Inter_18pt-SemiBold.ttf",
+              "./assets/fonts/Inter_18pt-Bold.ttf",
+              "./assets/fonts/Manrope-Regular.ttf",
+              "./assets/fonts/Manrope-Medium.ttf",
+              "./assets/fonts/Manrope-SemiBold.ttf",
+              "./assets/fonts/Manrope-Bold.ttf",
+              "./assets/fonts/NunitoSans-Regular.ttf",
+              "./assets/fonts/NunitoSans-Medium.ttf",
+              "./assets/fonts/NunitoSans-SemiBold.ttf",
+              "./assets/fonts/NunitoSans-Bold.ttf",
+              "./assets/fonts/NunitoSans-ExtraBold.ttf"
+            ]
+          },
+          "ios": {
+            "fonts": [
+              "./assets/fonts/Inter_18pt-Regular.ttf",
+              "./assets/fonts/Inter_18pt-Medium.ttf",
+              "./assets/fonts/Inter_18pt-SemiBold.ttf",
+              "./assets/fonts/Inter_18pt-Bold.ttf",
+              "./assets/fonts/Manrope-Regular.ttf",
+              "./assets/fonts/Manrope-Medium.ttf",
+              "./assets/fonts/Manrope-SemiBold.ttf",
+              "./assets/fonts/Manrope-Bold.ttf",
+              "./assets/fonts/NunitoSans-Regular.ttf",
+              "./assets/fonts/NunitoSans-Medium.ttf",
+              "./assets/fonts/NunitoSans-SemiBold.ttf",
+              "./assets/fonts/NunitoSans-Bold.ttf",
+              "./assets/fonts/NunitoSans-ExtraBold.ttf"
+            ]
+          }
+        }
+      ],
       [
         "expo-image-picker",
         {

@@ -16,6 +16,7 @@ import { FaqScreen } from '../screens/profile/FaqScreen';
 import { BecomeTradieScreen } from '../screens/profile/BecomeTradieScreen';
 import { ManageTradiesScreen } from '../screens/profile/ManageTradiesScreen';
 import { ChatDetailScreen } from '../screens/chat';
+import { AiSearchScreen } from '../screens/ai';
 import { getOnboardingSeen, setOnboardingSeen } from '../storage/onboardingStorage';
 import { useAuth } from '../context/AuthContext';
 
@@ -31,7 +32,7 @@ const navigationTheme: Theme = {
 };
 
 function OtpScreen({ navigation, route }: NativeStackScreenProps<RootStackParamList, 'Otp'>) {
-  const { identifier, identifierType, displayIdentifier } = route.params;
+  const { identifier, identifierType, displayIdentifier, signupRole } = route.params;
   return (
     <OtpVerificationScreen
       identifier={identifier}
@@ -39,6 +40,13 @@ function OtpScreen({ navigation, route }: NativeStackScreenProps<RootStackParamL
       displayIdentifier={displayIdentifier}
       onBack={() => navigation.goBack()}
       onVerified={() => {
+        if (signupRole === 'tradie') {
+          navigation.reset({
+            index: 0,
+            routes: [{ name: 'BecomeTradie', params: { mode: 'create', fromSignup: true } }],
+          });
+          return;
+        }
         navigation.replace('MainTabs');
       }}
       onResend={() => {
@@ -106,8 +114,13 @@ export function RootNavigator() {
             component={function SignUp({ navigation }: NativeStackScreenProps<RootStackParamList, 'SignUp'>) {
               return (
                 <SignUpScreen
-                  onContinue={({ phone }) =>
-                    navigation.navigate('Otp', { identifier: phone, identifierType: 'phone' })
+                  onContinue={({ phone, role }) =>
+                    navigation.navigate('Otp', {
+                      identifier: phone,
+                      identifierType: 'phone',
+                      displayIdentifier: phone,
+                      signupRole: role,
+                    })
                   }
                   onBack={() =>
                     navigation.canGoBack() ? navigation.goBack() : navigation.navigate('SignIn')
@@ -144,6 +157,7 @@ export function RootNavigator() {
           <Stack.Screen name="BecomeTradie" component={BecomeTradieScreen} />
           <Stack.Screen name="ManageTradies" component={ManageTradiesScreen} />
           <Stack.Screen name="ChatDetail" component={ChatDetailScreen} />
+          <Stack.Screen name="AiSearch" component={AiSearchScreen} />
         </Stack.Navigator>
       </NavigationContainer>
     </GestureHandlerRootView>

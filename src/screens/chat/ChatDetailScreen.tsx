@@ -15,7 +15,7 @@ import { useNavigation, useRoute, type RouteProp } from '@react-navigation/nativ
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { Icon } from '../../components/ui';
 import type { RootStackParamList } from '../../navigation/types';
-import { colors, fontFamilies } from '../../theme';
+import { colors, fontFamilies, nunitoSans } from '../../theme';
 
 type ChatMessage = {
   id: string;
@@ -238,7 +238,7 @@ const styles = StyleSheet.create({
     borderTopRightRadius: 6,
   },
   bubbleText: {
-    fontFamily: fontFamilies.nunitoSans.regular,
+    ...nunitoSans.regular,
     fontSize: 14,
     lineHeight: 20,
     color: colors.onboardingTitle,
@@ -246,7 +246,7 @@ const styles = StyleSheet.create({
   bubbleTime: {
     marginTop: 4,
     alignSelf: 'flex-end',
-    fontFamily: fontFamilies.nunitoSans.regular,
+    ...nunitoSans.regular,
     fontSize: 11,
     lineHeight: 14,
     color: colors.placeholder,

@@ -25,3 +25,29 @@ export const selectCategories = (state: RootState) => state.categories.items;
 export const selectCategoriesStatus = (state: RootState) => state.categories.status;
 export const selectCategoriesError = (state: RootState) => state.categories.error;
 export const selectCategoriesLoading = (state: RootState) => state.categories.status === 'loading';
+
+// ─── Regions selectors ────────────────────────────────────────────────────────
+
+export const selectRegions = (state: RootState) => state.regions.items;
+export const selectRegionsStatus = (state: RootState) => state.regions.status;
+export const selectRegionsError = (state: RootState) => state.regions.error;
+export const selectRegionsLoading = (state: RootState) => state.regions.status === 'loading';
+
+// ─── Users selectors ──────────────────────────────────────────────────────────
+
+export const selectUserMe = (state: RootState) => state.users.me;
+export const selectUsersStatus = (state: RootState) => state.users.status;
+export const selectUsersError = (state: RootState) => state.users.error;
+export const selectUsersLoading = (state: RootState) => state.users.status === 'loading';
+
+// ─── Tradies selectors ────────────────────────────────────────────────────────
+
+export const selectTradieList = (state: RootState) => state.tradies.list;
+export const selectTradieListStatus = (state: RootState) => state.tradies.listStatus;
+export const selectTradieListError = (state: RootState) => state.tradies.listError;
+export const selectTradieDetail = (state: RootState) => state.tradies.detail;
+export const selectTradieDetailStatus = (state: RootState) => state.tradies.detailStatus;
+export const selectTradieDetailError = (state: RootState) => state.tradies.detailError;
+export const selectMyTradieProfile = (state: RootState) => state.tradies.myProfile;
+export const selectMyTradieProfileStatus = (state: RootState) => state.tradies.myProfileStatus;
+export const selectTradieStats = (state: RootState) => state.tradies.stats;

@@ -3,7 +3,7 @@ import { Image, type ImageSourcePropType, StyleSheet, Text, View } from 'react-n
 import { AppButton } from './ui/AppButton';
 import { Icon } from './ui/Icon';
 import { LeaveReviewModal } from './LeaveReviewModal';
-import { colors, fontFamilies } from '../theme';
+import { colors, fontFamilies, nunitoSans } from '../theme';
 
 type StarSlot = 'full' | 'half' | 'empty';
 
@@ -56,9 +56,13 @@ export type ReviewEntry = {
 
 export type ProviderReviewsSectionProps = {
   providerName: string;
+  /** Tradie profile UUID — passed to LeaveReviewModal for POST /reviews. */
+  tradieProfileId: string;
   average: number;
   totalRatings: number;
   reviews: ReviewEntry[];
+  /** Called after a successful review submission so the parent can refresh. */
+  onReviewPosted?: () => void;
 };
 
 function AggregateStars({ average, size = 22 }: { average: number; size?: number }) {
@@ -108,15 +112,19 @@ function ReviewRow({ item }: { item: ReviewEntry }) {
 
 export const ProviderReviewsSection = memo(function ProviderReviewsSection({
   providerName,
+  tradieProfileId,
   average,
   totalRatings,
   reviews,
+  onReviewPosted,
 }: ProviderReviewsSectionProps) {
   const [modalVisible, setModalVisible] = useState(false);
+  const displayAverage = average ?? 0;
+  const displayTotal = totalRatings ?? 0;
 
   const onPost = useCallback((_payload: { rating: number; text: string }) => {
-    // Later: POST /reviews when API exists
-  }, []);
+    onReviewPosted?.();
+  }, [onReviewPosted]);
 
   return (
     <View style={styles.wrap}>
@@ -124,9 +132,9 @@ export const ProviderReviewsSection = memo(function ProviderReviewsSection({
 
       <View style={styles.summaryCard}>
         <View style={styles.summaryLeft}>
-          <Text style={styles.averageNum}>{average.toFixed(1)}</Text>
-          <AggregateStars average={average} size={16} />
-          <Text style={styles.ratingsCaption}>Based on {totalRatings.toLocaleString()} ratings</Text>
+          <Text style={styles.averageNum}>{displayAverage.toFixed(1)}</Text>
+          <AggregateStars average={displayAverage} size={16} />
+          <Text style={styles.ratingsCaption}>Based on {displayTotal.toLocaleString()} ratings</Text>
         </View>
         <AppButton
           title="Write Review"
@@ -145,6 +153,7 @@ export const ProviderReviewsSection = memo(function ProviderReviewsSection({
       <LeaveReviewModal
         visible={modalVisible}
         providerName={providerName}
+        tradieProfileId={tradieProfileId}
         onClose={() => setModalVisible(false)}
         onPost={onPost}
       />
@@ -165,7 +174,7 @@ const styles = StyleSheet.create({
     paddingBottom: 8,
   },
   sectionTitle: {
-    fontFamily: fontFamilies.nunitoSans.medium,
+    ...nunitoSans.medium,
     fontSize: 16,
     lineHeight: 24,
     color: colors.onboardingTitle,
@@ -189,7 +198,7 @@ const styles = StyleSheet.create({
     gap: 6,
   },
   averageNum: {
-    fontFamily: fontFamilies.nunitoSans.bold,
+    ...nunitoSans.bold,
     fontSize: 40,
     // lineHeight: 48,
     color: colors.onboardingTitle,
@@ -200,7 +209,7 @@ const styles = StyleSheet.create({
     gap: 4,
   },
   ratingsCaption: {
-    fontFamily: fontFamilies.nunitoSans.regular,
+    ...nunitoSans.regular,
     fontSize: 14,
     lineHeight: 20,
     color: '#6B6B6B',
@@ -213,7 +222,7 @@ const styles = StyleSheet.create({
     alignSelf: 'center',
   },
   writeBtnPillText: {
-    fontFamily: fontFamilies.nunitoSans.semibold,
+    ...nunitoSans.semibold,
     fontSize: 14,
     lineHeight: 16,
     color: colors.background,
@@ -251,7 +260,7 @@ const styles = StyleSheet.create({
     borderRadius: 22,
   },
   avatarText: {
-    fontFamily: fontFamilies.nunitoSans.semibold,
+    ...nunitoSans.semibold,
     fontSize: 18,
     color: colors.primary,
   },
@@ -266,20 +275,20 @@ const styles = StyleSheet.create({
     flexShrink: 0,
   },
   reviewAuthor: {
-    fontFamily: fontFamilies.nunitoSans.semibold,
+    ...nunitoSans.semibold,
     fontSize: 14,
     lineHeight: 22,
     color: colors.onboardingTitle,
   },
   reviewDate: {
-    fontFamily: fontFamilies.nunitoSans.regular,
+    ...nunitoSans.regular,
     fontSize: 12,
     lineHeight: 16,
     color: colors.label,
     marginTop: 2,
   },
   reviewBody: {
-    fontFamily: fontFamilies.nunitoSans.regular,
+    ...nunitoSans.regular,
     fontSize: 12,
     // lineHeight: 20,
     color: '#4E4E4E',

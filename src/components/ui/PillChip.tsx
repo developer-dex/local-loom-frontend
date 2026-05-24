@@ -1,6 +1,6 @@
 import { memo } from 'react';
 import { Pressable, StyleSheet, Text, View } from 'react-native';
-import { colors, fontFamilies } from '../../theme';
+import { colors, fontFamilies, nunitoSans } from '../../theme';
 
 // const shadowCard = {
 //   shadowColor: '#1B1B4D' as const,
@@ -71,7 +71,7 @@ const styles = StyleSheet.create({
     backgroundColor: '#FFF0EF',
   },
   label: {
-    fontFamily: fontFamilies.nunitoSans.medium,
+    ...nunitoSans.medium,
     fontSize: 12,
     lineHeight: 16,
     color: '#4E4E4E',

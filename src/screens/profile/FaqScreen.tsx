@@ -3,7 +3,7 @@ import { LayoutAnimation, Platform, Pressable, ScrollView, StyleSheet, Text, UIM
 import { useNavigation } from '@react-navigation/native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { Icon } from '../../components/ui';
-import { colors, fontFamilies } from '../../theme';
+import { colors, fontFamilies, nunitoSans } from '../../theme';
 
 if (Platform.OS === 'android' && UIManager.setLayoutAnimationEnabledExperimental) {
   UIManager.setLayoutAnimationEnabledExperimental(true);
@@ -205,7 +205,7 @@ const styles = StyleSheet.create({
   },
   question: {
     flex: 1,
-    fontFamily: fontFamilies.nunitoSans.medium,
+    ...nunitoSans.medium,
     fontSize: 14,
     lineHeight: 18,
     color: '#252525',
@@ -215,7 +215,7 @@ const styles = StyleSheet.create({
     paddingRight: 4,
   },
   answer: {
-    fontFamily: fontFamilies.nunitoSans.regular,
+    ...nunitoSans.regular,
     fontSize: 14,
     lineHeight: 16,
     color: '#252525',

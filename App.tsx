@@ -28,7 +28,6 @@ export default function App() {
   const [showMain, setShowMain] = useState(false);
   const nativeHidden = useRef(false);
   const startedAt = useRef(Date.now());
-  const fontsReady = fontsLoaded || fontError != null;
 
   const hideNativeOnce = useCallback(() => {
     if (nativeHidden.current) return;
@@ -37,20 +36,29 @@ export default function App() {
   }, []);
 
   useEffect(() => {
-    if (!fontsReady) return;
+    if (fontError && __DEV__) {
+      console.error('[fonts] Failed to load:', fontError);
+    }
+  }, [fontError]);
+
+  useEffect(() => {
+    if (!fontsLoaded) return;
     const elapsed = Date.now() - startedAt.current;
     const remaining = Math.max(0, MIN_SPLASH_MS - elapsed);
     const t = setTimeout(() => setShowMain(true), remaining);
     return () => clearTimeout(t);
-  }, [fontsReady]);
+  }, [fontsLoaded]);
 
-  // Safety net: never stay on splash longer than MAX_SPLASH_MS regardless of
-  // font load status. Prevents a frozen screen on devices where font loading
-  // hangs (e.g. network issues in production builds).
+  // Safety net: never stay on splash longer than MAX_SPLASH_MS.
   useEffect(() => {
-    const t = setTimeout(() => setShowMain(true), MAX_SPLASH_MS);
+    const t = setTimeout(() => {
+      if (!fontsLoaded && __DEV__) {
+        console.warn('[fonts] Timed out waiting for fonts — showing app anyway');
+      }
+      setShowMain(true);
+    }, MAX_SPLASH_MS);
     return () => clearTimeout(t);
-  }, []);
+  }, [fontsLoaded]);
 
   return (
     <ReduxProvider store={store}>

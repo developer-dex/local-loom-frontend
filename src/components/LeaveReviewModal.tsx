@@ -14,24 +14,32 @@ import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { AppButton } from './ui/AppButton';
 import { Icon } from './ui/Icon';
 import { StarRatingInput } from './ui/StarRatingInput';
-import { colors, fontFamilies } from '../theme';
+import { useToast } from './ui/Toast';
+import { colors, fontFamilies, nunitoSans } from '../theme';
+import { submitReviewApi } from '../api/reviews';
 
 export type LeaveReviewModalProps = {
   visible: boolean;
   providerName: string;
+  /** Tradie profile UUID — required to call POST /reviews. */
+  tradieProfileId: string;
   onClose: () => void;
-  onPost: (payload: { rating: number; text: string }) => void;
+  /** Called after a successful submission so the parent can refresh reviews. */
+  onPost?: (payload: { rating: number; text: string }) => void;
 };
 
 export const LeaveReviewModal = memo(function LeaveReviewModal({
   visible,
   providerName,
+  tradieProfileId,
   onClose,
   onPost,
 }: LeaveReviewModalProps) {
   const insets = useSafeAreaInsets();
+  const { showToast } = useToast();
   const [rating, setRating] = useState(0);
   const [text, setText] = useState('');
+  const [submitting, setSubmitting] = useState(false);
 
   useEffect(() => {
     if (!visible) {
@@ -40,13 +48,31 @@ export const LeaveReviewModal = memo(function LeaveReviewModal({
     }
   }, [visible]);
 
-  const submit = useCallback(() => {
+  const submit = useCallback(async () => {
     if (rating < 1) return;
-    onPost({ rating, text: text.trim() });
-    onClose();
-  }, [rating, text, onPost, onClose]);
+    setSubmitting(true);
+    try {
+      await submitReviewApi({
+        tradieProfileId,
+        rating,
+        comment: text.trim() || undefined,
+      });
+      showToast({
+        message: 'Review submitted! It will appear after moderation.',
+        type: 'success',
+        duration: 5_000,
+      });
+      onPost?.({ rating, text: text.trim() });
+      onClose();
+    } catch (err: unknown) {
+      const msg = err instanceof Error ? err.message : 'Failed to submit review.';
+      showToast({ message: msg, type: 'error', duration: 5_000 });
+    } finally {
+      setSubmitting(false);
+    }
+  }, [rating, text, tradieProfileId, onPost, onClose, showToast]);
 
-  const canPost = rating >= 1 && text.trim().length > 0;
+  const canPost = rating >= 1 && !submitting;
 
   return (
     <Modal visible={visible} animationType="slide" transparent onRequestClose={onClose}>
@@ -88,7 +114,7 @@ export const LeaveReviewModal = memo(function LeaveReviewModal({
                 accessibilityLabel="Review text"
               />
 
-              <AppButton title="Post" onPress={submit} disabled={!canPost} containerStyle={styles.postBtn}  labelStyle={styles.postBtnText}/>
+              <AppButton title="Post" onPress={submit} disabled={!canPost} loading={submitting} containerStyle={styles.postBtn} labelStyle={styles.postBtnText}/>
 
               <Text style={styles.disclaimer}>
                 All reviews on LocalLoom are verified within 48 hours before posting to ensure authenticity and accuracy.
@@ -131,7 +157,7 @@ const styles = StyleSheet.create({
     gap: 0,
   },
   modalTitle: {
-    fontFamily: fontFamilies.nunitoSans.medium,
+    ...nunitoSans.medium,
     fontSize: 14,
     lineHeight: 24,
     color: colors.onboardingTitle,
@@ -139,7 +165,7 @@ const styles = StyleSheet.create({
     marginBottom: 8,
   },
   modalSubtitle: {
-    fontFamily: fontFamilies.nunitoSans.regular,
+    ...nunitoSans.regular,
     fontSize: 12,
     lineHeight: 20,
     color: '#6B6B6B',
@@ -150,7 +176,7 @@ const styles = StyleSheet.create({
     marginBottom: 24,
   },
   fieldLabel: {
-    fontFamily: fontFamilies.nunitoSans.medium,
+    ...nunitoSans.medium,
     fontSize: 14,
     lineHeight: 20,
     color: '#3E4143',
@@ -162,7 +188,7 @@ const styles = StyleSheet.create({
     borderRadius: 12,
     paddingHorizontal: 14,
     paddingVertical: 12,
-    fontFamily: fontFamilies.nunitoSans.regular,
+    ...nunitoSans.regular,
     fontSize: 14,
     lineHeight: 20,
     color: colors.onboardingTitle,
@@ -176,13 +202,13 @@ const styles = StyleSheet.create({
     marginBottom: 16,
   },
   postBtnText: {
-    fontFamily: fontFamilies.nunitoSans.semibold,
+    ...nunitoSans.semibold,
     fontSize: 14,
     lineHeight: 16,
     color: colors.background,
   },
   disclaimer: {
-    fontFamily: fontFamilies.nunitoSans.regular,
+    ...nunitoSans.regular,
     fontSize: 10,
     lineHeight: 16,
     color: colors.label,

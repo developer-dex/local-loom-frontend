@@ -22,7 +22,7 @@ import {
   selectCategoriesError,
 } from '../../store/hooks';
 import { fetchCategoriesThunk } from '../../store/slices/categoriesSlice';
-import { colors, fontFamilies } from '../../theme';
+import { colors, fontFamilies, nunitoSans } from '../../theme';
 import type { IconName } from '../../components/ui/Icon';
 
 type Props = NativeStackScreenProps<CategoryStackParamList, 'CategoryHome'>;
@@ -150,7 +150,7 @@ const styles = StyleSheet.create({
     paddingHorizontal: 20,
   },
   pageTitle: {
-    fontFamily: fontFamilies.nunitoSans.bold,
+    ...nunitoSans.bold,
     fontSize: 18,
     lineHeight: 28,
     color: colors.onboardingTitle,
@@ -175,7 +175,7 @@ const styles = StyleSheet.create({
   searchInput: {
     flex: 1,
     padding: 0,
-    fontFamily: fontFamilies.nunitoSans.regular,
+    ...nunitoSans.regular,
     fontSize: 14,
     lineHeight: 18,
     color: colors.onboardingTitle,
@@ -195,7 +195,7 @@ const styles = StyleSheet.create({
     paddingTop: 4,
   },
   empty: {
-    fontFamily: fontFamilies.nunitoSans.regular,
+    ...nunitoSans.regular,
     fontSize: 14,
     color: colors.label,
     textAlign: 'center',

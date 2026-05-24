@@ -1,6 +1,6 @@
 import { memo, useMemo } from 'react';
 import { Image, type ImageSourcePropType, StyleSheet, Text, useWindowDimensions, View } from 'react-native';
-import { colors, fontFamilies } from '../../theme';
+import { colors, fontFamilies, nunitoSans } from '../../theme';
 
 const DEFAULT_SCREEN_PADDING = 20;
 const COLUMN_GAP = 12;
@@ -69,7 +69,7 @@ const styles = StyleSheet.create({
     height: '100%',
   },
   empty: {
-    fontFamily: fontFamilies.nunitoSans.regular,
+    ...nunitoSans.regular,
     fontSize: 14,
     lineHeight: 20,
     color: colors.label,

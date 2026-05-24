@@ -12,7 +12,7 @@ import {
 import * as ImagePicker from 'expo-image-picker';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { AppButton, AppTextField, Icon } from '../../components/ui';
-import { colors, fontFamilies, spacing } from '../../theme';
+import { colors, fontFamilies, nunitoSans, spacing } from '../../theme';
 import { sanitizeEmail, sanitizeName, validateEmail, validateName, validatePhone } from '../../utils';
 import { useAppDispatch, useAppSelector, selectAuthStatus, selectAuthError } from '../../store/hooks';
 import { signupThunk, clearError } from '../../store/slices/authSlice';
@@ -348,7 +348,7 @@ const styles = StyleSheet.create({
   },
   // ── Role tiles ─────────────────────────────────────────────────────────────
   sectionLabel: {
-    fontFamily: fontFamilies.nunitoSans.semibold,
+    ...nunitoSans.semibold,
     fontSize: 18,
     lineHeight: 24,
     color: colors.onboardingTitle,

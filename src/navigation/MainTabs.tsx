@@ -6,16 +6,10 @@ import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { Icon } from '../components/ui';
 import { colors, fontFamilies, spacing } from '../theme';
 import { CategoryStackNavigator } from './CategoryStack';
+import type { MainTabParamList } from './mainTabTypes';
 import { HomeScreen } from '../screens/main';
 import { ProfileScreen } from '../screens/profile';
 import { ChatsScreen } from '../screens/chat';
-
-type MainTabParamList = {
-  Home: undefined;
-  Chat: undefined;
-  Category: undefined;
-  Profile: undefined;
-};
 
 const Tab = createBottomTabNavigator<MainTabParamList>();
 

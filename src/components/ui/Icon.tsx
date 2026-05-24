@@ -69,6 +69,7 @@ import Help from '../../../assets/icons/help.svg';
 import Terms from '../../../assets/icons/terms.svg';
 import Trash from '../../../assets/icons/trash.svg';
 import IcnEdit02 from '../../../assets/icons/icn_edit-02.svg';
+import CheckmarkBadge01 from '../../../assets/icons/checkmark-badge-01.svg';
 
 export type IconName =
   | 'Frame 1321315172'
@@ -137,7 +138,8 @@ export type IconName =
   | 'help'
   | 'terms'
   | 'trash'
-  | 'icn_edit-02';
+  | 'icn_edit-02'
+  | 'checkmark-badge-01';
 
 const ICONS: Record<IconName, React.ComponentType<SvgProps> | number> = {
   'Frame 1321315172': Frame1321315172,
@@ -207,6 +209,7 @@ const ICONS: Record<IconName, React.ComponentType<SvgProps> | number> = {
   terms: Terms,
   trash: Trash,
   'icn_edit-02': IcnEdit02,
+  'checkmark-badge-01': CheckmarkBadge01,
 };
 
 export type IconProps = SvgProps & {

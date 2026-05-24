@@ -1,10 +1,12 @@
-import { memo, useState } from 'react';
-import { Image, type ImageSourcePropType, Pressable, StyleSheet, Text, View } from 'react-native';
+import { memo } from 'react';
+import { type ImageSourcePropType, Pressable, StyleSheet, Text, View } from 'react-native';
 import { Icon } from './Icon';
-import { colors, fontFamilies } from '../../theme';
+import { RemoteImage } from './RemoteImage';
+import { colors, fontFamilies, nunitoSans } from '../../theme';
 
 const OPEN = '#34A853';
 const CLOSED = '#D32F2F';
+const FALLBACK_IMAGE = require('../../../assets/first.png');
 
 export type NearYouItem = {
   id: string;
@@ -12,9 +14,11 @@ export type NearYouItem = {
   title: string;
   category: string;
   status: 'open' | 'closed';
-  distance: string;
+  region: string;
   rating: string;
   reviews: string;
+  /** From GET /tradies — heart is shown only when true. */
+  isFavourite?: boolean;
 };
 
 export type NearYouCardProps = {
@@ -22,25 +26,36 @@ export type NearYouCardProps = {
   onPress: () => void;
 };
 
+function imageUriFromSource(image: ImageSourcePropType): string | null {
+  if (typeof image === 'object' && image && 'uri' in image && image.uri) {
+    return image.uri;
+  }
+  return null;
+}
+
 export const NearYouCard = memo(function NearYouCard({ item, onPress }: NearYouCardProps) {
-  const [fav, setFav] = useState(false);
   const statusColor = item.status === 'open' ? OPEN : CLOSED;
   const statusLabel = item.status === 'open' ? 'Open' : 'Closed';
+  const imageUri = imageUriFromSource(item.image);
+  const showFavourite = item.isFavourite === true;
 
   return (
     <Pressable style={styles.card} onPress={onPress} accessibilityRole="button">
-      <Image source={item.image} style={styles.image} resizeMode="cover" />
+      <RemoteImage
+        uri={imageUri}
+        fallback={FALLBACK_IMAGE}
+        style={styles.image}
+        containerStyle={styles.imageContainer}
+        resizeMode="cover"
+        accessibilityLabel={item.title}
+      />
       <View style={styles.body}>
-        <Pressable
-          onPress={() => setFav(!fav)}
-          hitSlop={8}
-          accessibilityRole="button"
-          accessibilityLabel={fav ? 'Remove from favorites' : 'Add to favorites'}
-          style={styles.heartCorner}
-        >
-          <Icon name="heart" width={20} height={20} opacity={fav ? 1 : 0.75} />
-        </Pressable>
-        <View style={styles.topBlock}>
+        {showFavourite ? (
+          <View style={styles.heartCorner} pointerEvents="none" accessibilityElementsHidden>
+            <Icon name="heart" width={20} height={20} />
+          </View>
+        ) : null}
+        <View style={[styles.topBlock, !showFavourite && styles.topBlockNoHeart]}>
           <View style={styles.titleRow}>
             <Text style={styles.title} numberOfLines={1}>
               {item.title}
@@ -52,9 +67,11 @@ export const NearYouCard = memo(function NearYouCard({ item, onPress }: NearYouC
           </View>
         </View>
         <View style={styles.footerRow}>
-          <View style={styles.distanceRow}>
+          <View style={styles.regionRow}>
             <Icon name="location-01" width={16} height={16} color="#6A6E72" />
-            <Text style={styles.distance}>{item.distance}</Text>
+            <Text style={styles.region} numberOfLines={1}>
+              {item.region}
+            </Text>
           </View>
           <View style={styles.ratingRow}>
             <Icon name="icn_star" width={16} height={16} accessibilityElementsHidden />
@@ -84,11 +101,15 @@ const styles = StyleSheet.create({
     shadowOffset: { width: 0, height: 2 },
     elevation: 2,
   },
+  imageContainer: {
+    width: 98,
+    height: 100,
+    borderRadius: 12,
+  },
   image: {
     width: 98,
     height: 100,
     borderRadius: 12,
-    backgroundColor: colors.surface,
   },
   body: {
     flex: 1,
@@ -107,6 +128,9 @@ const styles = StyleSheet.create({
     gap: 4,
     paddingRight: 28,
   },
+  topBlockNoHeart: {
+    paddingRight: 0,
+  },
   titleRow: {
     flexDirection: 'row',
     alignItems: 'center',
@@ -114,7 +138,7 @@ const styles = StyleSheet.create({
   },
   title: {
     flex: 1,
-    fontFamily: fontFamilies.nunitoSans.medium,
+    ...nunitoSans.medium,
     fontSize: 16,
     lineHeight: 22,
     color: '#1F2937',
@@ -125,13 +149,13 @@ const styles = StyleSheet.create({
     flexWrap: 'wrap',
   },
   category: {
-    fontFamily: fontFamilies.nunitoSans.regular,
+    ...nunitoSans.regular,
     fontSize: 14,
     lineHeight: 18,
     color: colors.label,
   },
   status: {
-    fontFamily: fontFamilies.nunitoSans.regular,
+    ...nunitoSans.regular,
     fontSize: 12,
     lineHeight: 16,
   },
@@ -140,13 +164,17 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     justifyContent: 'space-between',
   },
-  distanceRow: {
+  regionRow: {
     flexDirection: 'row',
     alignItems: 'center',
     gap: 4,
+    flex: 1,
+    minWidth: 0,
+    marginRight: 8,
   },
-  distance: {
-    fontFamily: fontFamilies.nunitoSans.regular,
+  region: {
+    flex: 1,
+    ...nunitoSans.regular,
     fontSize: 12,
     lineHeight: 16,
     color: '#808080',
@@ -157,13 +185,13 @@ const styles = StyleSheet.create({
     gap: 4,
   },
   ratingValue: {
-    fontFamily: fontFamilies.nunitoSans.bold,
+    ...nunitoSans.bold,
     fontSize: 12,
     lineHeight: 16,
     color: '#3E4143',
   },
   ratingReviews: {
-    fontFamily: fontFamilies.nunitoSans.regular,
+    ...nunitoSans.regular,
     fontSize: 12,
     lineHeight: 16,
     color: '#808080',

@@ -1,7 +1,7 @@
 import { memo } from 'react';
 import { Dimensions, Image, Pressable, StyleSheet, Text, View } from 'react-native';
 import { Icon, type IconName } from '../ui/Icon';
-import { colors, fontFamilies } from '../../theme';
+import { colors, fontFamilies, nunitoSans } from '../../theme';
 
 const { width: SCREEN_W } = Dimensions.get('window');
 const H_PAD = 20;
@@ -98,14 +98,14 @@ const styles = StyleSheet.create({
     borderRadius: 12,
   },
   categoryName: {
-    fontFamily: fontFamilies.nunitoSans.semibold,
+    ...nunitoSans.semibold,
     fontSize: 12,
     lineHeight: 16,
     color: colors.onboardingTitle,
     textAlign: 'center',
   },
   servicesLine: {
-    fontFamily: fontFamilies.nunitoSans.regular,
+    ...nunitoSans.regular,
     fontSize: 11,
     lineHeight: 14,
     color: '#808080',

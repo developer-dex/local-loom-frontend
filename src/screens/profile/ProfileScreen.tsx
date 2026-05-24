@@ -1,5 +1,7 @@
-import { useCallback, useState } from 'react';
+import { useCallback, useMemo, useState } from 'react';
 import {
+  ActivityIndicator,
+  Alert,
   Image,
   Pressable,
   ScrollView,
@@ -8,18 +10,30 @@ import {
   View,
   type ImageSourcePropType,
 } from 'react-native';
-import { useNavigation } from '@react-navigation/native';
+import { useFocusEffect, useNavigation } from '@react-navigation/native';
 import type { NativeStackNavigationProp } from '@react-navigation/native-stack';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { EditProfileBottomSheet, ProfileMenuRow } from '../../components/profile';
-import { Icon, type IconName } from '../../components/ui';
+import { Icon, RemoteImage, type IconName } from '../../components/ui';
 import { useAuth } from '../../context/AuthContext';
 import type { RootStackParamList } from '../../navigation/types';
-import { loadTradieDraft } from '../../storage/tradieApplication';
-import { colors, fontFamilies } from '../../theme';
-import { useAppSelector, selectAuthUser } from '../../store/hooks';
+import {
+  useAppDispatch,
+  useAppSelector,
+  selectAuthUser,
+  selectMyTradieProfile,
+  selectTradieStats,
+  selectUsersLoading,
+} from '../../store/hooks';
+import { fetchProfileThunk } from '../../store/slices/authSlice';
+import { fetchMyTradieProfileThunk, fetchTradieStatsThunk } from '../../store/slices/tradiesSlice';
+import { deleteUserMeThunk } from '../../store/slices/usersSlice';
+import { resolveMediaUrl } from '../../utils/mediaUrl';
+import { profileStatusLabel } from '../../utils/tradieProfileDraft';
+import { colors, fontFamilies, nunitoSans } from '../../theme';
 
 const TRADIE_BADGE: ImageSourcePropType = require('../../../assets/signup/tradie.png');
+const DEFAULT_AVATAR = require('../../../assets/signup/customer.png');
 
 type MenuItem = {
   key: string;
@@ -31,7 +45,7 @@ const MENU_ITEMS: MenuItem[] = [
   { key: 'help', icon: 'help', label: 'Help & Support' },
   { key: 'terms', icon: 'terms', label: 'Terms & Conditions' },
   { key: 'about', icon: 'about', label: 'About' },
-  { key: 'faq', icon: 'faq', label: "FAQ’S" },
+  { key: 'faq', icon: 'faq', label: "FAQ'S" },
   { key: 'privacy', icon: 'icn_privacy', label: 'Privacy Policy' },
   { key: 'delete', icon: 'trash', label: 'Delete Account' },
 ];
@@ -39,23 +53,42 @@ const MENU_ITEMS: MenuItem[] = [
 export function ProfileScreen() {
   const insets = useSafeAreaInsets();
   const navigation = useNavigation();
+  const dispatch = useAppDispatch();
   const { isLoggedIn, logout } = useAuth();
   const authUser = useAppSelector(selectAuthUser);
+  const myTradieProfile = useAppSelector(selectMyTradieProfile);
+  const tradieStats = useAppSelector(selectTradieStats);
+  const usersLoading = useAppSelector(selectUsersLoading);
 
-  // Use API user data when logged in, fall back to local state for guest edits
-  const [profileName, setProfileName] = useState('James David');
-  const [profilePhone, setProfilePhone] = useState('9979656770');
-  const [profileAvatarUri, setProfileAvatarUri] = useState(
-    'https://www.figma.com/api/mcp/asset/3d597b90-42da-45fc-b8bc-341bc585a1a7',
-  );
+  const isTradie = authUser?.role === 'tradie';
+
   const [editProfileOpen, setEditProfileOpen] = useState(false);
+  const [guestName, setGuestName] = useState('');
+  const [guestPhone, setGuestPhone] = useState('');
+  const [guestAvatarUri, setGuestAvatarUri] = useState<string | null>(null);
 
-  // Derive display values: prefer live API data when available
-  const displayName = authUser?.name ?? profileName;
-  const displayPhone = authUser?.phone ?? profilePhone;
-  const displayAvatar = authUser?.avatar ?? profileAvatarUri;
+  const displayName = authUser?.name ?? (guestName || 'Guest');
+  const displayPhone = authUser?.phone ?? guestPhone;
+  const displayAvatar = useMemo(() => {
+    const raw = authUser?.avatar ?? guestAvatarUri;
+    if (!raw) return null;
+    return resolveMediaUrl(raw) ?? raw;
+  }, [authUser?.avatar, guestAvatarUri]);
+  const businessName = isTradie ? myTradieProfile?.businessName : null;
+  const profileStatus = isTradie ? myTradieProfile?.profileStatus : null;
 
   const tabBarSpace = 96 + Math.max(insets.bottom, 14);
+
+  useFocusEffect(
+    useCallback(() => {
+      if (!isLoggedIn) return;
+      void dispatch(fetchProfileThunk());
+      if (authUser?.role === 'tradie') {
+        void dispatch(fetchMyTradieProfileThunk());
+        void dispatch(fetchTradieStatsThunk());
+      }
+    }, [dispatch, isLoggedIn, authUser?.role]),
+  );
 
   const getRootNav = useCallback(() => {
     return navigation.getParent<NativeStackNavigationProp<RootStackParamList>>();
@@ -65,43 +98,78 @@ export function ProfileScreen() {
     getRootNav()?.navigate('SignIn');
   }, [getRootNav]);
 
-  const onMenuPress = useCallback((key: string) => {
-    if (key === 'terms') {
-      getRootNav()?.navigate('TermsAndConditions');
-      return;
-    }
-    if (key === 'privacy') {
-      getRootNav()?.navigate('PrivacyPolicy');
-      return;
-    }
-    if (key === 'help') {
-      getRootNav()?.navigate('HelpSupport');
-      return;
-    }
-    if (key === 'faq') {
-      getRootNav()?.navigate('Faq');
-      return;
-    }
+  const confirmDeleteAccount = useCallback(() => {
+    Alert.alert(
+      'Delete account',
+      'This will permanently delete your account. This action cannot be undone.',
+      [
+        { text: 'Cancel', style: 'cancel' },
+        {
+          text: 'Delete',
+          style: 'destructive',
+          onPress: () => {
+            void (async () => {
+              const result = await dispatch(deleteUserMeThunk());
+              if (deleteUserMeThunk.rejected.match(result)) {
+                Alert.alert('Error', (result.payload as string) ?? 'Could not delete account.');
+                return;
+              }
+              await logout();
+            })();
+          },
+        },
+      ],
+    );
+  }, [dispatch, logout]);
 
-    void key;
-  }, [getRootNav]);
+  const onMenuPress = useCallback(
+    (key: string) => {
+      if (key === 'delete') {
+        if (isLoggedIn) {
+          confirmDeleteAccount();
+        } else {
+          openSignIn();
+        }
+        return;
+      }
+      if (key === 'terms') {
+        getRootNav()?.navigate('TermsAndConditions');
+        return;
+      }
+      if (key === 'privacy') {
+        getRootNav()?.navigate('PrivacyPolicy');
+        return;
+      }
+      if (key === 'help') {
+        getRootNav()?.navigate('HelpSupport');
+        return;
+      }
+      if (key === 'faq') {
+        getRootNav()?.navigate('Faq');
+        return;
+      }
+    },
+    [getRootNav, confirmDeleteAccount, isLoggedIn, openSignIn],
+  );
 
   const onManageTradie = useCallback(() => {
-    void (async () => {
-      const root = getRootNav();
-      if (!root) return;
-      const initial = await loadTradieDraft();
-      root.navigate('BecomeTradie', initial ? { mode: 'edit', initial } : { mode: 'create' });
-    })();
-  }, [getRootNav]);
-
-  const onLogout = useCallback(() => {
-    if (isLoggedIn) {
-      void logout();
-    } else {
+    if (!isLoggedIn) {
       openSignIn();
+      return;
     }
-  }, [isLoggedIn, logout, openSignIn]);
+    getRootNav()?.navigate('ManageTradies');
+  }, [getRootNav, isLoggedIn, openSignIn]);
+
+  const onBecomeTradie = useCallback(() => {
+    if (!isLoggedIn) {
+      openSignIn();
+      return;
+    }
+    getRootNav()?.navigate('BecomeTradie', { mode: 'create' });
+  }, [getRootNav, isLoggedIn, openSignIn]);
+
+  const formatRating = (value: number | undefined) =>
+    value != null && Number.isFinite(value) ? value.toFixed(1) : '—';
 
   return (
     <View style={[styles.screen, { paddingTop: insets.top }]}>
@@ -119,19 +187,32 @@ export function ProfileScreen() {
             <View style={styles.heroTop}>
               <View style={styles.identity}>
                 <View style={styles.avatarWrap}>
-                  <Image
-                    source={displayAvatar ? { uri: displayAvatar } : require('../../../assets/signup/customer.png')}
+                  <RemoteImage
+                    uri={displayAvatar}
+                    fallback={DEFAULT_AVATAR}
                     style={styles.avatar}
+                    containerStyle={styles.avatar}
                     resizeMode="cover"
+                    accessibilityLabel="Profile photo"
                   />
                 </View>
                 <View style={styles.identityText}>
                   <Text style={styles.displayName} numberOfLines={1}>
                     {displayName}
                   </Text>
-                  <Text style={styles.phone} numberOfLines={1}>
-                    {displayPhone}
-                  </Text>
+                  {/* {businessName ? (
+                    <Text style={styles.businessName} numberOfLines={1}>
+                      {businessName}
+                    </Text>
+                  ) : null} */}
+                  {displayPhone ? (
+                    <Text style={styles.phone} numberOfLines={1}>
+                      {displayPhone}
+                    </Text>
+                  ) : null}
+                  {profileStatus ? (
+                    <Text style={styles.statusBadge}>{profileStatusLabel(profileStatus)}</Text>
+                  ) : null}
                 </View>
               </View>
 
@@ -140,26 +221,54 @@ export function ProfileScreen() {
                 accessibilityRole="button"
                 accessibilityLabel="Edit profile"
                 style={({ pressed }) => [styles.editBtn, pressed && styles.pressed]}
-                onPress={() => setEditProfileOpen(true)}
+                onPress={() => {
+                  if (!isLoggedIn) {
+                    openSignIn();
+                    return;
+                  }
+                  setEditProfileOpen(true);
+                }}
               >
                 <Icon name="icn_edit-02" width={18} height={18} color={colors.onboardingTitle} />
               </Pressable>
             </View>
 
-            <View style={styles.heroDivider} />
+            {/* {isTradie && tradieStats ? (
+              <View style={styles.statsRow}>
+                <View style={styles.statItem}>
+                  <Text style={styles.statValue}>{tradieStats.visitCount}</Text>
+                  <Text style={styles.statLabel}>Visits</Text>
+                </View>
+                <View style={styles.statDivider} />
+                <View style={styles.statItem}>
+                  <Text style={styles.statValue}>{tradieStats.reviewCount}</Text>
+                  <Text style={styles.statLabel}>Reviews</Text>
+                </View>
+                <View style={styles.statDivider} />
+                <View style={styles.statItem}>
+                  <Text style={styles.statValue}>{formatRating(tradieStats.averageRating)}</Text>
+                  <Text style={styles.statLabel}>Rating</Text>
+                </View>
+              </View>
+            ) : null} */}
 
+            <View style={styles.heroDivider} />
             <Pressable
               accessibilityRole="button"
-              accessibilityLabel="Manage Tradie"
-              onPress={onManageTradie}
+              accessibilityLabel={isTradie ? 'Manage Tradie' : 'Become a Tradie'}
+              onPress={isTradie ? onManageTradie : onBecomeTradie}
               style={({ pressed }) => [styles.tradieRow, pressed && styles.pressed]}
             >
               <Image source={TRADIE_BADGE} style={styles.tradieBadge} resizeMode="cover" />
               <Text style={styles.tradieLabel} numberOfLines={1}>
-                Manage Tradie
+                {isTradie ? 'Manage Tradie' : 'Become a Tradie'}
               </Text>
               <Icon name="arrow-right-01" width={18} height={18} color={colors.primary} />
             </Pressable>
+
+            {isLoggedIn && usersLoading ? (
+              <ActivityIndicator style={styles.heroLoader} color={colors.primary} />
+            ) : null}
           </View>
         </View>
 
@@ -194,13 +303,16 @@ export function ProfileScreen() {
       <EditProfileBottomSheet
         visible={editProfileOpen}
         onClose={() => setEditProfileOpen(false)}
+        isLoggedIn={isLoggedIn}
         initialName={displayName}
-        initialPhone={displayPhone}
-        initialAvatarUri={displayAvatar ?? profileAvatarUri}
+        initialPhone={displayPhone ?? ''}
+        initialAvatarUri={displayAvatar ?? ''}
         onSaved={({ name, phone, profilePhotoUri }) => {
-          setProfileName(name);
-          setProfilePhone(phone);
-          if (profilePhotoUri) setProfileAvatarUri(profilePhotoUri);
+          if (!isLoggedIn) {
+            setGuestName(name);
+            setGuestPhone(phone);
+            setGuestAvatarUri(profilePhotoUri);
+          }
         }}
       />
     </View>
@@ -232,7 +344,6 @@ const styles = StyleSheet.create({
   section: {
     paddingHorizontal: 20,
   },
-  /* Hero ----------------------------------------------------------------- */
   heroCard: {
     backgroundColor: '#FFF0EF',
     borderRadius: 12,
@@ -269,17 +380,59 @@ const styles = StyleSheet.create({
     justifyContent: 'center',
   },
   displayName: {
-    fontFamily: fontFamilies.nunitoSans.medium,
+    ...nunitoSans.medium,
     fontSize: 20,
     lineHeight: 26,
     color: colors.onboardingTitle,
     textTransform: 'capitalize',
   },
+  businessName: {
+    ...nunitoSans.regular,
+    fontSize: 14,
+    lineHeight: 18,
+    color: colors.primary,
+  },
   phone: {
-    fontFamily: fontFamilies.nunitoSans.regular,
+    ...nunitoSans.regular,
     fontSize: 14,
     lineHeight: 18,
     color: '#717171',
+  },
+  statusBadge: {
+    fontFamily: fontFamilies.inter.medium,
+    fontSize: 12,
+    lineHeight: 16,
+    color: '#B45309',
+    marginTop: 2,
+  },
+  statsRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-around',
+    paddingVertical: 8,
+    marginTop: 4,
+  },
+  statItem: {
+    flex: 1,
+    alignItems: 'center',
+    gap: 2,
+  },
+  statValue: {
+    fontFamily: fontFamilies.inter.semibold,
+    fontSize: 16,
+    lineHeight: 20,
+    color: colors.onboardingTitle,
+  },
+  statLabel: {
+    fontFamily: fontFamilies.inter.regular,
+    fontSize: 11,
+    lineHeight: 14,
+    color: '#717171',
+  },
+  statDivider: {
+    width: 1,
+    height: 28,
+    backgroundColor: '#F1D9D6',
   },
   editBtn: {
     width: 42,
@@ -307,12 +460,14 @@ const styles = StyleSheet.create({
   },
   tradieLabel: {
     flex: 1,
-    fontFamily: fontFamilies.nunitoSans.medium,
+    ...nunitoSans.medium,
     fontSize: 18,
     lineHeight: 24,
     color: colors.primary,
   },
-  /* About card ----------------------------------------------------------- */
+  heroLoader: {
+    marginTop: 4,
+  },
   sectionTitle: {
     fontFamily: fontFamilies.inter.medium,
     fontSize: 16,
@@ -328,7 +483,6 @@ const styles = StyleSheet.create({
     paddingHorizontal: 16,
     paddingVertical: 12,
   },
-  /* Logout --------------------------------------------------------------- */
   logoutWrap: {
     paddingHorizontal: 20,
     alignItems: 'center',

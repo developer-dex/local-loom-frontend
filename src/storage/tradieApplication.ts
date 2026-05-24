@@ -1,4 +1,5 @@
 import AsyncStorage from '@react-native-async-storage/async-storage';
+import type { AbnLookupResult } from '../api/tradieTypes';
 
 export type TradieApplicationStatus = 'under_review' | 'reviewed';
 
@@ -8,10 +9,15 @@ export type TradieApplicationDraft = {
   phone: string;
   email: string;
   documents: Record<'tradeLicense' | 'publicLiability' | 'idProof', { uri: string; name: string } | null>;
+  abn: string;
+  abnData: AbnLookupResult | null;
   businessName: string;
   selectedServiceIds: string[];
   videoUri: { uri: string; name: string } | null;
-  selectedLocationId: string | null;
+  /** Region UUID from GET /regions */
+  selectedRegionId: string | null;
+  /** @deprecated Use selectedRegionId */
+  selectedLocationId?: string | null;
   businessImageUri: { uri: string; name: string } | null;
   serviceDescription: string;
   website: string | null;

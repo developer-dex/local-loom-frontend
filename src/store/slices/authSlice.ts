@@ -13,13 +13,15 @@
  *   loginThunk        — POST /auth/login
  *   verifyOtpThunk    — POST /auth/verify-otp
  *   logoutThunk       — POST /auth/logout
- *   fetchProfileThunk — GET  /auth/profile
+ *   fetchProfileThunk — GET  /users/me
  *   hydrateAuthThunk  — restore tokens from secure storage on app start
  */
-import { createAsyncThunk, createSlice } from '@reduxjs/toolkit';
-import { signupApi, loginApi, verifyOtpApi, logoutApi, getProfileApi } from '../../api/auth';
+import { createAsyncThunk, createSlice, type PayloadAction } from '@reduxjs/toolkit';
+import { signupApi, loginApi, verifyOtpApi, logoutApi } from '../../api/auth';
+import { getUserMeApi } from '../../api/users';
 import { tokenStorage } from '../../storage/tokenStorage';
 import type { AuthUser, AuthTokens, IdentifierType, UserRole } from '../../api/authTypes';
+import { normalizeAuthUser } from '../../utils/authUser';
 
 // ─── State ────────────────────────────────────────────────────────────────────
 
@@ -57,7 +59,7 @@ const initialState: AuthState = {
  * Flow:
  *  1. Read access + refresh tokens from SecureStore.
  *  2. If none → user is logged out, return null.
- *  3. Call GET /auth/profile with the stored access token.
+ *  3. Call GET /users/me with the stored access token.
  *     - client.ts auto-refreshes on 401 (expired access token) and retries.
  *     - If refresh also fails (refresh token expired/revoked) → clear tokens, return null.
  *  4. Return { user, tokens } so Redux state is fully restored.
@@ -73,7 +75,7 @@ export const hydrateAuthThunk = createAsyncThunk('auth/hydrate', async () => {
 
   try {
     // Fetch profile using stored token. client.ts handles auto-refresh on 401.
-    const res = await getProfileApi();
+    const res = await getUserMeApi();
     // Re-read tokens after potential refresh
     const [newAccess, newRefresh] = await Promise.all([
       tokenStorage.getAccessToken(),
@@ -176,14 +178,14 @@ export const logoutThunk = createAsyncThunk('auth/logout', async () => {
 });
 
 /**
- * GET /auth/profile
+ * GET /users/me
  * Fetches and refreshes the user object in state.
  */
 export const fetchProfileThunk = createAsyncThunk(
   'auth/fetchProfile',
   async (_, { rejectWithValue }) => {
     try {
-      const res = await getProfileApi();
+      const res = await getUserMeApi();
       return res.data;
     } catch (err: unknown) {
       const msg = err instanceof Error ? err.message : 'Failed to fetch profile';
@@ -210,12 +212,16 @@ const authSlice = createSlice({
       state.error = null;
       state.pendingOtp = null;
     },
+    /** Sync user after /users/me update (avatar, name, etc.). */
+    setAuthUser(state, action: PayloadAction<AuthUser>) {
+      state.user = normalizeAuthUser(action.payload);
+    },
   },
   extraReducers: (builder) => {
     // ── hydrateAuth ──────────────────────────────────────────────────────────
     builder.addCase(hydrateAuthThunk.fulfilled, (state, action) => {
       if (action.payload) {
-        state.user = action.payload.user;
+        state.user = normalizeAuthUser(action.payload.user);
         state.tokens = action.payload.tokens;
         state.status = 'succeeded';
       }
@@ -266,7 +272,7 @@ const authSlice = createSlice({
       })
       .addCase(verifyOtpThunk.fulfilled, (state, action) => {
         state.status = 'succeeded';
-        state.user = action.payload.user;
+        state.user = normalizeAuthUser(action.payload.user);
         state.tokens = action.payload.tokens;
         state.pendingOtp = null;
       })
@@ -291,7 +297,7 @@ const authSlice = createSlice({
       })
       .addCase(fetchProfileThunk.fulfilled, (state, action) => {
         state.status = 'succeeded';
-        state.user = action.payload;
+        state.user = normalizeAuthUser(action.payload);
       })
       .addCase(fetchProfileThunk.rejected, (state, action) => {
         state.status = 'failed';
@@ -300,5 +306,5 @@ const authSlice = createSlice({
   },
 });
 
-export const { clearError, resetAuth } = authSlice.actions;
+export const { clearError, resetAuth, setAuthUser } = authSlice.actions;
 export default authSlice.reducer;
