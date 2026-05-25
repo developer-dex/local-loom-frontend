@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useState } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import {
   ActivityIndicator,
   Alert,
@@ -6,7 +6,6 @@ import {
   KeyboardAvoidingView,
   Platform,
   Pressable,
-  ScrollView,
   StyleSheet,
   Text,
   TextInput,
@@ -16,10 +15,25 @@ import * as ImagePicker from 'expo-image-picker';
 import { useNavigation, useRoute } from '@react-navigation/native';
 import type { NativeStackNavigationProp } from '@react-navigation/native-stack';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
-import { AppButton, AppTextField, BusinessTimeWheelPicker, Icon, useToast } from '../../components/ui';
+import {
+  AppButton,
+  AppTextField,
+  BusinessTimeWheelPicker,
+  Icon,
+  KeyboardFormScrollView,
+  useKeyboardFormScrollOnFocus,
+  useToast,
+} from '../../components/ui';
 import { saveTradieDraft, saveTradieStatus, type TradieApplicationDraft } from '../../storage/tradieApplication';
 import { colors, fontFamilies } from '../../theme';
-import { sanitizeName, sanitizePhone, validateName, validatePhone } from '../../utils';
+import {
+  AU_PHONE_E164_MAX_LENGTH,
+  AU_PHONE_DIAL_CODE,
+  sanitizeAustralianPhone,
+  sanitizeName,
+  validateName,
+  validatePhone,
+} from '../../utils';
 import { abnResultToApiJson } from '../../utils/abnData';
 import {
   businessTimeToApi,
@@ -46,7 +60,17 @@ import {
 import { fetchCategoriesThunk } from '../../store/slices/categoriesSlice';
 import { fetchRegionsThunk } from '../../store/slices/regionsSlice';
 import { fetchProfileThunk } from '../../store/slices/authSlice';
-import { setupBusinessProfileThunk, uploadWorkPhotosThunk } from '../../store/slices/tradiesSlice';
+import {
+  deleteWorkPhotoThunk,
+  setupBusinessProfileThunk,
+  uploadWorkPhotosThunk,
+} from '../../store/slices/tradiesSlice';
+import {
+  hasPendingWorkPhotoChanges,
+  isLocalMediaUri,
+  normalizeWorkImageDrafts,
+  type WorkImageDraft,
+} from '../../utils/workPhotos';
 
 const MAX_SERVICE_CATEGORIES = 6;
 const MAX_WORK_PHOTOS = 20;
@@ -151,6 +175,8 @@ function AbnNumberField({
   verified: boolean;
   loading: boolean;
 }) {
+  const handleFocus = useKeyboardFormScrollOnFocus();
+
   return (
     <View style={abnStyles.fieldWrap}>
       <Text style={abnStyles.fieldLabel}>ABN number</Text>
@@ -158,6 +184,7 @@ function AbnNumberField({
         <TextInput
           value={value}
           onChangeText={onChangeText}
+          onFocus={handleFocus}
           placeholder="Enter ABN Number"
           placeholderTextColor={colors.placeholder}
           keyboardType="number-pad"
@@ -327,7 +354,11 @@ export function BecomeTradieScreen() {
     initial?.photoUri ?? personalPrefill?.photoUri ?? null,
   );
   const [name, setName] = useState(initial?.name ?? personalPrefill?.name ?? '');
-  const [phone, setPhone] = useState(initial?.phone ?? personalPrefill?.phone ?? '');
+  const [phone, setPhone] = useState(
+    () =>
+      sanitizeAustralianPhone(initial?.phone ?? personalPrefill?.phone ?? '').value ||
+      AU_PHONE_DIAL_CODE,
+  );
   const [email, setEmail] = useState(initial?.email ?? personalPrefill?.email ?? '');
 
   /** When profile loads after mount, prefill step 0 for customers (create flow, no draft). */
@@ -379,7 +410,16 @@ export function BecomeTradieScreen() {
   const [openDayPickerOpen, setOpenDayPickerOpen] = useState(false);
   const [emergencyAvailable, setEmergencyAvailable] = useState<boolean | null>(initial?.emergencyAvailable ?? null);
 
-  const [workImages, setWorkImages] = useState<{ uri: string; name: string }[]>(initial?.workImages ?? []);
+  const initialWorkImagesForEdit = useMemo(
+    () => (mode === 'edit' ? normalizeWorkImageDrafts(initial?.workImages ?? []) : []),
+    [mode, initial?.workImages],
+  );
+
+  const [workImages, setWorkImages] = useState<WorkImageDraft[]>(initialWorkImagesForEdit);
+  /** Server photo ids the user explicitly removed with the × button (edit mode). */
+  const removedWorkPhotoIdsRef = useRef<Set<string>>(new Set());
+  /** Local file URIs the user added from camera/gallery this session. */
+  const addedLocalWorkUrisRef = useRef<Set<string>>(new Set());
 
   const [nameError, setNameError] = useState<string | null>(null);
   const [emailError, setEmailError] = useState<string | null>(null);
@@ -525,18 +565,39 @@ export function BecomeTradieScreen() {
     }
   }, []);
 
-  const addWorkImageFromAsset = useCallback(
-    (asset: ImagePicker.ImagePickerAsset) => {
-      const fileName = asset.fileName ?? asset.uri.split('/').pop() ?? 'Image';
+  const addWorkImagesFromAssets = useCallback(
+    (assets: ImagePicker.ImagePickerAsset[]) => {
+      if (assets.length === 0) return;
+
       setWorkImages((prev) => {
-        if (prev.length >= MAX_WORK_PHOTOS) {
+        const remaining = MAX_WORK_PHOTOS - prev.length;
+        if (remaining <= 0) {
           showToast({
             message: `Maximum ${MAX_WORK_PHOTOS} work photos allowed.`,
             type: 'error',
           });
           return prev;
         }
-        return [...prev, { uri: asset.uri, name: fileName }];
+
+        const accepted = assets.slice(0, remaining).map((asset) => ({
+          uri: asset.uri,
+          name: asset.fileName ?? asset.uri.split('/').pop() ?? 'Image',
+        }));
+
+        for (const img of accepted) {
+          if (isLocalMediaUri(img.uri)) {
+            addedLocalWorkUrisRef.current.add(img.uri);
+          }
+        }
+
+        if (assets.length > remaining) {
+          showToast({
+            message: `Only ${remaining} more photo(s) added (max ${MAX_WORK_PHOTOS}).`,
+            type: 'error',
+          });
+        }
+
+        return [...prev, ...accepted];
       });
       setWorkImagesError(null);
     },
@@ -556,35 +617,46 @@ export function BecomeTradieScreen() {
         quality: 0.9,
       });
       if (!result.canceled && result.assets?.[0]?.uri) {
-        addWorkImageFromAsset(result.assets[0]);
+        addWorkImagesFromAssets(result.assets);
       }
     } catch (e) {
       Alert.alert('Could not open camera', 'Something went wrong. Please try again.');
     }
-  }, [addWorkImageFromAsset]);
+  }, [addWorkImagesFromAssets]);
 
   const onChooseWorkImageFromLibrary = useCallback(async () => {
     try {
+      const remaining = MAX_WORK_PHOTOS - workImages.length;
+      if (remaining <= 0) {
+        showToast({
+          message: `Maximum ${MAX_WORK_PHOTOS} work photos allowed.`,
+          type: 'error',
+        });
+        return;
+      }
+
       const perm = await ImagePicker.requestMediaLibraryPermissionsAsync();
       if (!perm.granted) {
-        Alert.alert('Permission needed', 'Please allow photo access to upload an image.');
+        Alert.alert('Permission needed', 'Please allow photo access to upload images.');
         return;
       }
       const result = await ImagePicker.launchImageLibraryAsync({
         mediaTypes: ['images'],
+        allowsMultipleSelection: true,
+        selectionLimit: remaining,
         allowsEditing: false,
         quality: 0.9,
       });
-      if (!result.canceled && result.assets?.[0]?.uri) {
-        addWorkImageFromAsset(result.assets[0]);
+      if (!result.canceled && result.assets?.length) {
+        addWorkImagesFromAssets(result.assets);
       }
     } catch (e) {
       Alert.alert('Could not open photos', 'Something went wrong. Please try again.');
     }
-  }, [addWorkImageFromAsset]);
+  }, [workImages.length, addWorkImagesFromAssets, showToast]);
 
   const onAddWorkImage = useCallback(() => {
-    Alert.alert('Add Work Image', 'How would you like to add an image?', [
+    Alert.alert('Add Work Images', 'How would you like to add photos?', [
       { text: 'Take Photo', onPress: onTakeWorkPhoto },
       { text: 'Choose from Library', onPress: onChooseWorkImageFromLibrary },
       { text: 'Cancel', style: 'cancel' },
@@ -592,7 +664,16 @@ export function BecomeTradieScreen() {
   }, [onTakeWorkPhoto, onChooseWorkImageFromLibrary]);
 
   const onRemoveWorkImage = useCallback((uri: string) => {
-    setWorkImages((prev) => prev.filter((img) => img.uri !== uri));
+    setWorkImages((prev) => {
+      const target = prev.find((img) => img.uri === uri);
+      if (target?.id) {
+        removedWorkPhotoIdsRef.current.add(target.id);
+      }
+      if (isLocalMediaUri(uri)) {
+        addedLocalWorkUrisRef.current.delete(uri);
+      }
+      return prev.filter((img) => img.uri !== uri);
+    });
   }, []);
 
   const onPickDocument = useCallback(async (key: DocKey) => {
@@ -620,7 +701,7 @@ export function BecomeTradieScreen() {
 
   const validateStep0 = useCallback((): boolean => {
     const ne = validateName(name);
-    const pe = validatePhone(phone);
+    const pe = validatePhone(phone, { completeOnly: true });
     const ee = validateEmail(email);
     setNameError(ne);
     setPhoneError(pe);
@@ -815,7 +896,54 @@ export function BecomeTradieScreen() {
   }, [workImages]);
 
   const submitWorkPhotos = useCallback(async (): Promise<boolean> => {
-    const uris = workImages.map((img) => img.uri);
+    const newLocal = workImages.filter((img) => addedLocalWorkUrisRef.current.has(img.uri));
+
+    if (mode === 'edit') {
+      const removedIds = [...removedWorkPhotoIdsRef.current];
+
+      if (!hasPendingWorkPhotoChanges(removedIds, addedLocalWorkUrisRef.current)) {
+        return true;
+      }
+
+      for (const photoId of removedIds) {
+        const delResult = await dispatch(deleteWorkPhotoThunk(photoId));
+        if (deleteWorkPhotoThunk.rejected.match(delResult)) {
+          const errMsg =
+            typeof delResult.payload === 'string'
+              ? delResult.payload
+              : 'Failed to remove work photo.';
+          setWorkImagesError(errMsg);
+          showToast({ message: errMsg, type: 'error' });
+          return false;
+        }
+      }
+
+      if (newLocal.length > 0) {
+        const uploadResult = await dispatch(uploadWorkPhotosThunk(newLocal.map((img) => img.uri)));
+        if (uploadWorkPhotosThunk.rejected.match(uploadResult)) {
+          const errMsg =
+            typeof uploadResult.payload === 'string'
+              ? uploadResult.payload
+              : 'Failed to upload work images.';
+          setWorkImagesError(errMsg);
+          showToast({ message: errMsg, type: 'error' });
+          return false;
+        }
+      }
+
+      removedWorkPhotoIdsRef.current.clear();
+      addedLocalWorkUrisRef.current.clear();
+      showToast({ message: 'Work photos updated successfully!', type: 'success' });
+      return true;
+    }
+
+    // Create: only upload newly picked local files; skip if already on server.
+    if (newLocal.length === 0) {
+      const hasRemote = workImages.some((img) => !isLocalMediaUri(img.uri));
+      if (hasRemote) return true;
+    }
+
+    const uris = newLocal.map((img) => img.uri);
     const result = await dispatch(uploadWorkPhotosThunk(uris));
 
     if (uploadWorkPhotosThunk.fulfilled.match(result)) {
@@ -828,7 +956,7 @@ export function BecomeTradieScreen() {
     setWorkImagesError(errMsg);
     showToast({ message: errMsg, type: 'error' });
     return false;
-  }, [workImages, dispatch, showToast]);
+  }, [workImages, dispatch, showToast, mode]);
 
   const onPrimaryPress = useCallback(() => {
     if (step === 0) {
@@ -900,10 +1028,12 @@ export function BecomeTradieScreen() {
     return step === STEPS - 1 ? 'Submit for Review' : 'Continue';
   }, [step, submitting]);
 
+  const handleDescriptionFocus = useKeyboardFormScrollOnFocus();
+
   return (
     <KeyboardAvoidingView
       style={styles.flex}
-      behavior={Platform.OS === 'ios' ? 'padding' : undefined}
+      behavior="padding"
       keyboardVerticalOffset={insets.top}
     >
       <View style={[styles.screen, { paddingTop: insets.top }]}>
@@ -951,11 +1081,10 @@ export function BecomeTradieScreen() {
           })}
         </View>
 
-        <ScrollView
+        <KeyboardFormScrollView
+          keyboardAvoiding={false}
           style={styles.scroll}
           contentContainerStyle={styles.scrollContent}
-          keyboardShouldPersistTaps="handled"
-          showsVerticalScrollIndicator={false}
         >
           <Text style={styles.title}>{STEP_HEADINGS[step]}</Text>
 
@@ -999,13 +1128,20 @@ export function BecomeTradieScreen() {
                   label="Phone number"
                   value={phone}
                   onChangeText={(raw) => {
-                    const { value } = sanitizePhone(raw);
-                    setPhone(value);
-                    setPhoneError(null);
+                    const { value, hadInvalid } = sanitizeAustralianPhone(raw);
+                    const next = value || AU_PHONE_DIAL_CODE;
+                    setPhone(next);
+                    const err = validatePhone(next);
+                    setPhoneError(
+                      hadInvalid
+                        ? 'Use digits only (Australian format, e.g. 0412 345 678).'
+                        : err,
+                    );
                   }}
-                  placeholder="Phone Number"
+                  placeholder="412 345 678"
                   leftIconName="smart-phone-02"
                   keyboardType="phone-pad"
+                  maxLength={AU_PHONE_E164_MAX_LENGTH}
                   error={phoneError ?? undefined}
                   inputStyle={inputColor}
                 />
@@ -1182,6 +1318,7 @@ export function BecomeTradieScreen() {
                     setServiceDescription(t);
                     setServiceDescriptionError(null);
                   }}
+                  onFocus={handleDescriptionFocus}
                   placeholder="Description"
                   placeholderTextColor={colors.placeholder}
                   multiline
@@ -1322,7 +1459,7 @@ export function BecomeTradieScreen() {
                 <Pressable
                   onPress={onAddWorkImage}
                   accessibilityRole="button"
-                  accessibilityLabel="Add work image"
+                  accessibilityLabel="Add work images"
                   style={({ pressed }) => [
                     styles.workAddTile,
                     workImages.length % 2 === 0
@@ -1337,7 +1474,7 @@ export function BecomeTradieScreen() {
               <FieldError message={workImagesError} />
             </View>
           ) : null}
-        </ScrollView>
+        </KeyboardFormScrollView>
 
         <View style={[styles.footer, { paddingBottom: Math.max(insets.bottom, 12) }]}>
           <AppButton

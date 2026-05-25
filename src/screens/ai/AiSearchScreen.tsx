@@ -356,7 +356,7 @@ const styles = StyleSheet.create({
   },
   composer: {
     flexDirection: 'row',
-    alignItems: 'flex-end',
+    alignItems: 'center',
     gap: 8,
     paddingHorizontal: 12,
     paddingVertical: 10,
@@ -372,7 +372,7 @@ const styles = StyleSheet.create({
     minHeight: 24,
     paddingVertical: 2,
     ...nunitoSans.regular,
-    fontSize: 15,
+    fontSize: 16,
     lineHeight: 20,
     color: colors.onboardingTitle,
   },

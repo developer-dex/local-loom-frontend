@@ -7,9 +7,11 @@ import { Provider as ReduxProvider } from 'react-redux';
 import { store } from './src/store';
 import { BrandedSplash } from './src/components/BrandedSplash';
 import { AuthProvider } from './src/context/AuthContext';
+import { useChatSocket } from './src/hooks/useChatSocket';
 import { useManropeFonts } from './src/hooks/useManropeFonts';
 import { RootNavigator } from './src/navigation/RootNavigator';
 import { ToastProvider } from './src/components/ui';
+import { subscribeChatPersistence } from './src/api/chatPersistence';
 
 // Keep the native splash visible until we explicitly hide it.
 // Must be called at module level (not inside a component) to take effect before
@@ -22,6 +24,29 @@ const MIN_SPLASH_MS = 600;
 // Safety timeout: if fonts haven't loaded after 5 s, proceed anyway rather
 // than staying stuck on the splash screen forever.
 const MAX_SPLASH_MS = 5000;
+
+/**
+ * Wires the chat socket lifecycle and persistence subscription.
+ * Only rendered after the splash phase completes so that any initialization
+ * error in the chat module can't block the app from booting.
+ */
+function ChatWiring() {
+  useChatSocket();
+
+  // Subscribe to store for persistence (debounced AsyncStorage writes).
+  // Running inside a useEffect avoids blocking module initialization.
+  useEffect(() => {
+    let unsubscribe: (() => void) | undefined;
+    try {
+      unsubscribe = subscribeChatPersistence(store);
+    } catch {
+      // Best-effort — persistence failure must never block the app.
+    }
+    return () => unsubscribe?.();
+  }, []);
+
+  return null;
+}
 
 export default function App() {
   const [fontsLoaded, fontError] = useManropeFonts();
@@ -45,9 +70,12 @@ export default function App() {
     if (!fontsLoaded) return;
     const elapsed = Date.now() - startedAt.current;
     const remaining = Math.max(0, MIN_SPLASH_MS - elapsed);
-    const t = setTimeout(() => setShowMain(true), remaining);
+    const t = setTimeout(() => {
+      hideNativeOnce();
+      setShowMain(true);
+    }, remaining);
     return () => clearTimeout(t);
-  }, [fontsLoaded]);
+  }, [fontsLoaded, hideNativeOnce]);
 
   // Safety net: never stay on splash longer than MAX_SPLASH_MS.
   useEffect(() => {
@@ -55,10 +83,11 @@ export default function App() {
       if (!fontsLoaded && __DEV__) {
         console.warn('[fonts] Timed out waiting for fonts — showing app anyway');
       }
+      hideNativeOnce();
       setShowMain(true);
     }, MAX_SPLASH_MS);
     return () => clearTimeout(t);
-  }, [fontsLoaded]);
+  }, [fontsLoaded, hideNativeOnce]);
 
   return (
     <ReduxProvider store={store}>
@@ -75,6 +104,7 @@ export default function App() {
             </View>
           ) : (
             <AuthProvider>
+              <ChatWiring />
               <RootNavigator />
             </AuthProvider>
           )}

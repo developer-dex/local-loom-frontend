@@ -44,9 +44,11 @@ function PillTabBar({ state, descriptors, navigation }: BottomTabBarProps) {
   const count = state.routes.length;
   const gap = 12;
   const circle = 50;
-  const horizontal = 16;
+  const horizontal = 14; // padding inside the pill (tabBarShadow.padding)
+  const totalGap = gap * (count - 1);
+  // Compute the active width dynamically: available space minus inactive circles minus gaps
   const inner = Math.max(0, barWidth - horizontal * 2);
-  const activeW = Math.max(136, Math.min(220, inner - (count - 1) * circle - gap * (count - 1)));
+  const activeW = Math.max(circle, inner - (count - 1) * circle - totalGap);
 
   return (
     <View style={[styles.tabBarOuter, { paddingBottom: Math.max(insets.bottom, 14) }]}>
@@ -125,13 +127,13 @@ export function MainTabs() {
 const styles = StyleSheet.create({
   tabBarOuter: {
     backgroundColor: colors.background,
-    paddingHorizontal: 18,
+    paddingHorizontal: 14,
     paddingTop: 8,
   },
   tabBarShadow: {
     backgroundColor: colors.background,
     borderRadius: 999,
-    padding: 12,
+    padding: 10,
     shadowColor: '#000',
     shadowOpacity: 0.12,
     shadowRadius: 22,
@@ -142,7 +144,7 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     alignItems: 'center',
     gap: 12,
-    justifyContent: 'space-between',
+    justifyContent: 'center',
   },
   itemWrap: {
     height: 50,

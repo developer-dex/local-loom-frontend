@@ -1,13 +1,16 @@
 import { memo, useMemo } from 'react';
-import { Image, type ImageSourcePropType, StyleSheet, Text, useWindowDimensions, View } from 'react-native';
-import { colors, fontFamilies, nunitoSans } from '../../theme';
+import { StyleSheet, Text, useWindowDimensions, View } from 'react-native';
+import { RemoteImage } from './RemoteImage';
+import { colors, nunitoSans } from '../../theme';
 
 const DEFAULT_SCREEN_PADDING = 20;
 const COLUMN_GAP = 12;
 const TILE_RADIUS = 12;
+const WORK_PHOTO_FALLBACK = require('../../../assets/first.png');
 
 export type WorkPhotoGridProps = {
-  photos: ImageSourcePropType[];
+  /** Resolved remote image URLs. */
+  photoUris: string[];
   /** Horizontal padding from each screen edge (matches parent screen). Default 20. */
   screenEdgePadding?: number;
   /** Gap between tiles (row and column). Default 12. */
@@ -17,7 +20,7 @@ export type WorkPhotoGridProps = {
 };
 
 export const WorkPhotoGrid = memo(function WorkPhotoGrid({
-  photos,
+  photoUris,
   screenEdgePadding = DEFAULT_SCREEN_PADDING,
   gap = COLUMN_GAP,
   borderRadius = TILE_RADIUS,
@@ -29,7 +32,12 @@ export const WorkPhotoGrid = memo(function WorkPhotoGrid({
     return (contentW - gap) / 2;
   }, [windowWidth, screenEdgePadding, gap]);
 
-  if (photos.length === 0) {
+  const tileStyle = useMemo(
+    () => ({ width: tileSize, height: tileSize, borderRadius }),
+    [tileSize, borderRadius],
+  );
+
+  if (photoUris.length === 0) {
     return (
       <Text style={styles.empty} accessibilityRole="text">
         No work photos yet.
@@ -39,14 +47,21 @@ export const WorkPhotoGrid = memo(function WorkPhotoGrid({
 
   return (
     <View style={[styles.grid, { gap }]}>
-      {photos.map((source, index) => (
+      {photoUris.map((uri, index) => (
         <View
-          key={`work-photo-${index}`}
-          style={[styles.tile, { width: tileSize, height: tileSize, borderRadius }]}
-          accessibilityLabel={`Work photo ${index + 1} of ${photos.length}`}
+          key={uri}
+          style={[styles.tile, tileStyle]}
+          accessibilityLabel={`Work photo ${index + 1} of ${photoUris.length}`}
           accessibilityRole="image"
         >
-          <Image source={source} style={styles.image} resizeMode="cover" />
+          <RemoteImage
+            uri={uri}
+            fallback={WORK_PHOTO_FALLBACK}
+            style={styles.image}
+            containerStyle={styles.imageContainer}
+            resizeMode="cover"
+            accessibilityLabel={`Work photo ${index + 1}`}
+          />
         </View>
       ))}
     </View>
@@ -63,8 +78,10 @@ const styles = StyleSheet.create({
     overflow: 'hidden',
     backgroundColor: colors.surface,
   },
-  image: {
+  imageContainer: {
     ...StyleSheet.absoluteFillObject,
+  },
+  image: {
     width: '100%',
     height: '100%',
   },

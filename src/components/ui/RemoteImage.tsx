@@ -1,7 +1,7 @@
-import { useEffect, useState } from 'react';
+import { Image } from 'expo-image';
+import { useEffect, useState, type ReactNode } from 'react';
 import {
   ActivityIndicator,
-  Image,
   StyleSheet,
   View,
   type ImageResizeMode,
@@ -13,25 +13,44 @@ import {
 import { colors } from '../../theme';
 
 export type RemoteImageProps = {
-  /** Remote image URL. When empty, `fallback` is shown with no loader. */
+  /** Remote image URL. When empty, `fallback` / `renderFallback` is shown with no loader. */
   uri?: string | null;
   fallback: ImageSourcePropType;
+  /** Shown instead of `fallback` when URI is missing or load fails. */
+  renderFallback?: () => ReactNode;
   style?: StyleProp<ImageStyle>;
   containerStyle?: StyleProp<ViewStyle>;
   resizeMode?: ImageResizeMode;
   accessibilityLabel?: string;
+  /** Disk + memory cache (default). Use `memory` for highly volatile URLs. */
+  cachePolicy?: 'disk' | 'memory' | 'memory-disk' | 'none';
 };
 
+function resizeModeToContentFit(mode: ImageResizeMode): 'cover' | 'contain' | 'fill' | 'none' {
+  switch (mode) {
+    case 'contain':
+      return 'contain';
+    case 'stretch':
+      return 'fill';
+    case 'center':
+      return 'none';
+    default:
+      return 'cover';
+  }
+}
+
 /**
- * Shows a spinner while a remote image loads; falls back on error or missing URI.
+ * Remote image with loader and disk/memory cache via expo-image.
  */
 export function RemoteImage({
   uri,
   fallback,
+  renderFallback,
   style,
   containerStyle,
   resizeMode = 'cover',
   accessibilityLabel,
+  cachePolicy = 'memory-disk',
 }: RemoteImageProps) {
   const [loading, setLoading] = useState(Boolean(uri));
   const [failed, setFailed] = useState(false);
@@ -42,23 +61,39 @@ export function RemoteImage({
   }, [uri]);
 
   const useRemote = Boolean(uri) && !failed;
-  const source: ImageSourcePropType = useRemote ? { uri: uri! } : fallback;
+
+  if (!useRemote) {
+    if (renderFallback) {
+      return <View style={[styles.container, containerStyle]}>{renderFallback()}</View>;
+    }
+    return (
+      <View style={[styles.container, containerStyle]}>
+        <Image
+          source={fallback}
+          style={style}
+          contentFit={resizeModeToContentFit(resizeMode)}
+          accessibilityLabel={accessibilityLabel}
+        />
+      </View>
+    );
+  }
 
   return (
     <View style={[styles.container, containerStyle]}>
-      {loading && useRemote ? (
+      {loading ? (
         <View style={styles.loaderWrap} pointerEvents="none">
           <ActivityIndicator size="small" color={colors.primary} />
         </View>
       ) : null}
       <Image
-        source={source}
-        style={[style, loading && useRemote ? styles.hiddenWhileLoading : null]}
-        resizeMode={resizeMode}
+        source={{ uri: uri! }}
+        recyclingKey={uri!}
+        cachePolicy={cachePolicy}
+        style={[style, loading ? styles.hiddenWhileLoading : null]}
+        contentFit={resizeModeToContentFit(resizeMode)}
         accessibilityLabel={accessibilityLabel}
-        onLoadStart={() => {
-          if (useRemote) setLoading(true);
-        }}
+        transition={150}
+        onLoadStart={() => setLoading(true)}
         onLoad={() => setLoading(false)}
         onError={() => {
           setFailed(true);

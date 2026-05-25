@@ -10,18 +10,36 @@
  */
 import { env } from '../config/env';
 import { ApiError, extractErrorMessage } from './errors';
+import { apiGet } from './http';
 import { tokenStorage } from '../storage/tokenStorage';
-import type { ApiRequestOptions } from './types';
+import type { ApiRequestOptions, QueryParams } from './types';
 
 type HttpMethod = 'GET' | 'POST' | 'PUT' | 'PATCH' | 'DELETE';
 
 // ─── Helpers ─────────────────────────────────────────────────────────────────
 
-function resolveUrl(endpoint: string): string {
-  if (/^https?:\/\//i.test(endpoint)) return endpoint;
-  const base = env.apiBaseUrl.replace(/\/$/, '');
-  const path = endpoint.startsWith('/') ? endpoint : `/${endpoint}`;
-  return `${base}${path}`;
+function appendQuery(url: string, query?: QueryParams): string {
+  if (!query) return url;
+  const params = new URLSearchParams();
+  for (const [key, value] of Object.entries(query)) {
+    if (value === undefined || value === null) continue;
+    params.append(key, String(value));
+  }
+  const qs = params.toString();
+  if (!qs) return url;
+  return url.includes('?') ? `${url}&${qs}` : `${url}?${qs}`;
+}
+
+function resolveUrl(endpoint: string, query?: QueryParams): string {
+  let full: string;
+  if (/^https?:\/\//i.test(endpoint)) {
+    full = endpoint;
+  } else {
+    const base = env.apiBaseUrl.replace(/\/$/, '');
+    const path = endpoint.startsWith('/') ? endpoint : `/${endpoint}`;
+    full = `${base}${path}`;
+  }
+  return appendQuery(full, query);
 }
 
 async function parseBody<T>(res: Response): Promise<T> {
@@ -78,7 +96,7 @@ async function authenticatedRequest<T>(
   options?: ApiRequestOptions,
   isRetry = false,
 ): Promise<T> {
-  const url = resolveUrl(endpoint);
+  const url = resolveUrl(endpoint, options?.query);
   const accessToken = await tokenStorage.getAccessToken();
 
   const headers = new Headers({
@@ -130,6 +148,21 @@ async function authenticatedRequest<T>(
 
 export function authenticatedGet<T>(endpoint: string, options?: ApiRequestOptions): Promise<T> {
   return authenticatedRequest<T>('GET', endpoint, options);
+}
+
+/**
+ * GET with Bearer token when the user is logged in; otherwise an unauthenticated request.
+ * Use for endpoints that work for guests but return extra data when authenticated (e.g. /tradies).
+ */
+export async function getWithOptionalAuth<T>(
+  endpoint: string,
+  options?: ApiRequestOptions,
+): Promise<T> {
+  const accessToken = await tokenStorage.getAccessToken();
+  if (accessToken) {
+    return authenticatedGet<T>(endpoint, options);
+  }
+  return apiGet<T>(endpoint, options);
 }
 
 export function authenticatedPost<T>(endpoint: string, options?: ApiRequestOptions): Promise<T> {

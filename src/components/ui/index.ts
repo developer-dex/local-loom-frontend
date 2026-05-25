@@ -1,5 +1,11 @@
+export { AdaptiveBlurView, BlurScrimFallback, type AdaptiveBlurViewProps } from './AdaptiveBlurView';
 export { AppButton, type AppButtonProps } from './AppButton';
 export { AppTextField, type AppTextFieldProps } from './AppTextField';
+export {
+  KeyboardFormScrollView,
+  useKeyboardFormScrollOnFocus,
+  type KeyboardFormScrollViewProps,
+} from './KeyboardFormScrollView';
 export { Icon, type IconName, type IconProps } from './Icon';
 export { RemoteImage, type RemoteImageProps } from './RemoteImage';
 export { NearYouCard, type NearYouCardProps, type NearYouItem } from './NearYouCard';

@@ -21,7 +21,7 @@ export type CredentialType = 'phone' | 'email' | 'empty';
 
 export function detectCredentialType(value: string): CredentialType {
   if (!value) return 'empty';
-  if (/^\d/.test(value)) return 'phone';
+  if (/^[\d+]/.test(value)) return 'phone';
   return 'email';
 }
 
@@ -50,16 +50,77 @@ export function validateName(value: string): string | null {
   return null;
 }
 
-export function sanitizePhone(input: string): { value: string; hadInvalid: boolean } {
-  const digitsOnly = input.replace(/[^\d]/g, '');
-  return { value: digitsOnly, hadInvalid: digitsOnly.length !== input.length };
+// ─── Australian phone ─────────────────────────────────────────────────────────
+
+export const AU_PHONE_DIAL_CODE = '+61';
+/** National significant number length (digits after +61). */
+export const AU_PHONE_LOCAL_MAX_DIGITS = 9;
+/** Full E.164 length, e.g. +61412345678 */
+export const AU_PHONE_E164_MAX_LENGTH = 12;
+
+/**
+ * Australian E.164: +61 + 9 digits.
+ * Mobile: 4xxxxxxxx; landline: 2/3/7/8 area codes.
+ */
+const AU_PHONE_E164_REGEX = /^\+61(?:4\d{8}|[2378]\d{8})$/;
+
+/** Normalise input to +61XXXXXXXXX (max 9 national digits). */
+export function normalizeAustralianPhone(input: string): string {
+  const digits = input.replace(/\D/g, '');
+  if (!digits) return '';
+
+  let nsn = digits;
+  if (nsn.startsWith('61')) {
+    nsn = nsn.slice(2);
+  } else if (nsn.startsWith('0')) {
+    nsn = nsn.slice(1);
+  }
+  nsn = nsn.slice(0, AU_PHONE_LOCAL_MAX_DIGITS);
+  if (!nsn) return '';
+  return `${AU_PHONE_DIAL_CODE}${nsn}`;
 }
 
-/** Validates an E.164 phone number (e.g. "+61412345678"). */
-export function validatePhone(value: string): string | null {
-  if (!value) return 'Phone number is required.';
-  // Must start with + followed by 7–15 digits
-  if (!/^\+\d{7,15}$/.test(value)) return 'Enter a valid phone number.';
+export function sanitizeAustralianPhone(input: string): { value: string; hadInvalid: boolean } {
+  const hadInvalid = /[^\d+\s()-]/.test(input);
+  const value = normalizeAustralianPhone(input);
+  return { value, hadInvalid };
+}
+
+/** @deprecated Use {@link sanitizeAustralianPhone}. */
+export function sanitizePhone(input: string): { value: string; hadInvalid: boolean } {
+  return sanitizeAustralianPhone(input);
+}
+
+export type ValidatePhoneOptions = {
+  /** When true, partial numbers (still typing) are invalid — use for submit/buttons. */
+  completeOnly?: boolean;
+};
+
+/** Validates an Australian E.164 phone number (e.g. "+61412345678"). */
+export function validatePhone(value: string, options?: ValidatePhoneOptions): string | null {
+  const completeOnly = options?.completeOnly ?? false;
+  const trimmed = value.trim();
+  if (!trimmed || trimmed === '+' || trimmed === AU_PHONE_DIAL_CODE) {
+    return 'Phone number is required.';
+  }
+
+  const e164 = trimmed.startsWith('+') ? trimmed.slice(0, AU_PHONE_E164_MAX_LENGTH) : normalizeAustralianPhone(trimmed);
+
+  if (!e164 || e164 === AU_PHONE_DIAL_CODE) {
+    return 'Phone number is required.';
+  }
+
+  if (!e164.startsWith(AU_PHONE_DIAL_CODE)) {
+    return 'Only Australian phone numbers (+61) are allowed.';
+  }
+
+  if (e164.length < AU_PHONE_E164_MAX_LENGTH) {
+    return completeOnly ? 'Enter a valid Australian phone number.' : null;
+  }
+
+  if (!AU_PHONE_E164_REGEX.test(e164)) {
+    return 'Enter a valid Australian phone number (e.g. 0412 345 678).';
+  }
+
   return null;
 }
-

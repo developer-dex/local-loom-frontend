@@ -1,6 +1,7 @@
-import type { MyTradieProfile } from '../api/tradieTypes';
+import type { MyTradieProfile, WorkPhoto } from '../api/tradieTypes';
 import type { AbnLookupResult } from '../api/tradieTypes';
 import type { TradieApplicationDraft } from '../storage/tradieApplication';
+import { normalizeWorkImageDrafts } from './workPhotos';
 
 const DAY_API_TO_SHORT: Record<string, string> = {
   sunday: 'sun',
@@ -49,10 +50,17 @@ export function myTradieProfileToDraft(
       .map((d) => DAY_API_TO_SHORT[d.toLowerCase()] ?? d.slice(0, 3).toLowerCase())
       .filter(Boolean),
     emergencyAvailable: profile.isEmergencyAvailable ?? null,
-    workImages: (profile.workPhotos ?? []).map((p) => ({
-      uri: p.imageUrl,
-      name: p.imageUrl.split('/').pop() ?? 'work.jpg',
-    })),
+    workImages: normalizeWorkImageDrafts(
+      (profile.workPhotos ?? []).map((p) => {
+        const raw = p as WorkPhoto & { image_url?: string };
+        const uri = raw.imageUrl ?? raw.image_url ?? '';
+        return {
+          id: raw.id,
+          uri,
+          name: uri.split('/').pop() ?? 'work.jpg',
+        };
+      }),
+    ),
   };
 }
 

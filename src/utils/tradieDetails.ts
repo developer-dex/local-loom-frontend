@@ -1,10 +1,87 @@
 import type {
+  TradieProfile,
   TradieReview,
   TradieReviewApiItem,
   TradieReviewsDetail,
+  TradieService,
+  TradieUser,
   TradieWorkDetail,
 } from '../api/tradieTypes';
 import { resolveMediaUrl } from './mediaUrl';
+
+/** Normalize GET /tradies/:id — guards missing fields that crash the detail screen. */
+export function normalizeTradieProfile(data: unknown): TradieProfile | null {
+  if (!data || typeof data !== 'object') return null;
+
+  let raw = data as Record<string, unknown>;
+  if (raw.data && typeof raw.data === 'object' && !raw.businessName && !raw.id) {
+    raw = raw.data as Record<string, unknown>;
+  }
+
+  const id = raw.id != null ? String(raw.id) : '';
+  if (!id) return null;
+
+  const services: TradieService[] = Array.isArray(raw.services)
+    ? raw.services
+        .filter((s): s is Record<string, unknown> => Boolean(s) && typeof s === 'object')
+        .map((s) => ({
+          id: String(s.id ?? ''),
+          name: String(s.name ?? ''),
+        }))
+        .filter((s) => s.id && s.name)
+    : [];
+
+  const userRaw =
+    raw.user && typeof raw.user === 'object' ? (raw.user as Record<string, unknown>) : null;
+  const user: TradieUser = {
+    id: userRaw?.id != null ? String(userRaw.id) : '',
+    name: userRaw?.name != null ? String(userRaw.name) : 'Provider',
+    email: userRaw?.email != null ? String(userRaw.email) : null,
+    phone: userRaw?.phone != null ? String(userRaw.phone) : '',
+    avatar: resolveMediaUrl(userRaw?.avatar as string | null | undefined) ?? null,
+  };
+
+  const businessImages = (
+    Array.isArray(raw.businessImages) ? raw.businessImages : []
+  )
+    .map((uri) => resolveMediaUrl(String(uri)) ?? String(uri))
+    .filter(Boolean);
+
+  const businessImage =
+    resolveMediaUrl(raw.businessImage as string | null | undefined) ??
+    businessImages[0] ??
+    null;
+
+  const openDays = Array.isArray(raw.openDays)
+    ? raw.openDays.map((d) => String(d)).filter(Boolean)
+    : [];
+
+  return {
+    id,
+    businessName: String(raw.businessName ?? 'Business'),
+    businessImage,
+    businessImages,
+    businessLocation: raw.businessLocation != null ? String(raw.businessLocation) : null,
+    serviceDescription: raw.serviceDescription != null ? String(raw.serviceDescription) : null,
+    website: raw.website != null ? String(raw.website) : null,
+    timeFrom: raw.timeFrom != null ? String(raw.timeFrom) : null,
+    timeTo: raw.timeTo != null ? String(raw.timeTo) : null,
+    openDays,
+    isEmergencyAvailable: Boolean(raw.isEmergencyAvailable),
+    isOpen: Boolean(raw.isOpen),
+    averageRating: Number(raw.averageRating ?? 0),
+    totalRatingCount: Number(raw.totalRatingCount ?? 0),
+    services,
+    regions: Array.isArray(raw.regions)
+      ? raw.regions
+          .filter((r): r is Record<string, unknown> => Boolean(r) && typeof r === 'object')
+          .map((r) => ({ id: String(r.id ?? ''), name: String(r.name ?? '') }))
+          .filter((r) => r.id && r.name)
+      : [],
+    workPhotos: Array.isArray(raw.workPhotos) ? raw.workPhotos : [],
+    user,
+  };
+}
 
 function mapApiReviewItem(r: TradieReviewApiItem): TradieReview {
   return {

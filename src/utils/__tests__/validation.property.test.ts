@@ -106,7 +106,8 @@ function canSubmitLogic(
 ): boolean {
   if (!role) return false;
   if (!fullName.trim() || !email.trim() || !phone.trim()) return false;
-  if (validateName(fullName) || validateEmail(email) || validatePhone(phone)) return false;
+  if (validateName(fullName) || validateEmail(email) || validatePhone(phone, { completeOnly: true }))
+    return false;
   return true;
 }
 
@@ -116,7 +117,7 @@ describe('Property 7: Sign-up Continue button disabled unless all fields valid',
       fc.property(
         fc.string({ minLength: 2 }),
         fc.emailAddress(),
-        fc.string({ minLength: 8 }).map((s) => s.replace(/\D/g, '0')),
+        fc.stringMatching(/^\+614\d{8}$/),
         (fullName, email, phone) => {
           return canSubmitLogic(null, fullName, email, phone) === false;
         },
@@ -131,7 +132,7 @@ describe('Property 7: Sign-up Continue button disabled unless all fields valid',
         fc.constantFrom('tradie', 'customer'),
         fc.stringMatching(/^\s*$/), // empty or whitespace-only
         fc.emailAddress(),
-        fc.string({ minLength: 8 }).map((s) => s.replace(/\D/g, '0')),
+        fc.stringMatching(/^\+614\d{8}$/),
         (role, fullName, email, phone) => {
           return canSubmitLogic(role, fullName, email, phone) === false;
         },
@@ -146,7 +147,7 @@ describe('Property 7: Sign-up Continue button disabled unless all fields valid',
         fc.constantFrom('tradie', 'customer'),
         fc.string({ minLength: 2 }).filter((s) => s.trim().length >= 2),
         fc.stringMatching(/^\s*$/), // empty or whitespace-only
-        fc.string({ minLength: 8 }).map((s) => s.replace(/\D/g, '0')),
+        fc.stringMatching(/^\+614\d{8}$/),
         (role, fullName, email, phone) => {
           return canSubmitLogic(role, fullName, email, phone) === false;
         },
@@ -161,7 +162,7 @@ describe('Property 7: Sign-up Continue button disabled unless all fields valid',
         fc.constantFrom('tradie', 'customer'),
         fc.string({ minLength: 2 }).filter((s) => s.trim().length >= 2),
         fc.string({ minLength: 1 }).filter((s) => !Email_Regex.test(s) && s.trim().length > 0),
-        fc.string({ minLength: 8 }).map((s) => s.replace(/\D/g, '0')),
+        fc.stringMatching(/^\+614\d{8}$/),
         (role, fullName, email, phone) => {
           return canSubmitLogic(role, fullName, email, phone) === false;
         },
@@ -176,7 +177,7 @@ describe('Property 7: Sign-up Continue button disabled unless all fields valid',
         fc.constantFrom('tradie', 'customer'),
         fc.string({ minLength: 2 }).filter((s) => s.trim().length >= 2),
         fc.emailAddress(),
-        fc.string({ maxLength: 7 }).map((s) => s.replace(/\D/g, '0')), // too short for validatePhone
+        fc.oneof(fc.constant(''), fc.constant('+61'), fc.stringMatching(/^\+61\d{1,7}$/)),
         (role, fullName, email, phone) => {
           return canSubmitLogic(role, fullName, email, phone) === false;
         },
@@ -192,8 +193,7 @@ describe('Property 7: Sign-up Continue button disabled unless all fields valid',
         // Valid name: at least 2 non-whitespace chars, only letters/spaces/hyphens/apostrophes
         fc.stringMatching(/^[A-Za-z][A-Za-z ]{1,}$/).filter((s) => s.trim().length >= 2),
         fc.emailAddress(),
-        // Valid phone: at least 8 digits
-        fc.string({ minLength: 8, maxLength: 15 }).map((s) => s.replace(/\D/g, '1')),
+        fc.stringMatching(/^\+614\d{8}$/),
         (role, fullName, email, phone) => {
           return canSubmitLogic(role, fullName, email, phone) === true;
         },

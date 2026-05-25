@@ -1,5 +1,5 @@
 import { useCallback } from 'react';
-import { ActivityIndicator, Alert, Pressable, StyleSheet, Text, View } from 'react-native';
+import { ActivityIndicator, Pressable, StyleSheet, Text, View } from 'react-native';
 import { useFocusEffect, useNavigation } from '@react-navigation/native';
 import type { NativeStackNavigationProp } from '@react-navigation/native-stack';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
@@ -14,12 +14,12 @@ import {
   selectTradieStats,
 } from '../../store/hooks';
 import { fetchMyTradieProfileThunk, fetchTradieStatsThunk } from '../../store/slices/tradiesSlice';
+import { isTradieProfileApproved } from '../../utils/authUser';
 import { myTradieProfileToDraft, profileStatusLabel } from '../../utils/tradieProfileDraft';
 import { colors, fontFamilies, nunitoSans } from '../../theme';
 
-function canEditProfile(status: string | undefined): boolean {
-  return status === 'approved' || status === 'reviewed';
-}
+const REVIEW_PENDING_MESSAGE =
+  'Your application is still being reviewed. We will notify you when it is ready.';
 
 export function ManageTradiesScreen() {
   const insets = useSafeAreaInsets();
@@ -27,44 +27,41 @@ export function ManageTradiesScreen() {
   const dispatch = useAppDispatch();
   const authUser = useAppSelector(selectAuthUser);
   const profile = useAppSelector(selectMyTradieProfile);
-  const profileStatus = useAppSelector(selectMyTradieProfileStatus);
+  const profileFetchStatus = useAppSelector(selectMyTradieProfileStatus);
   const stats = useAppSelector(selectTradieStats);
 
-  const loading = profileStatus === 'loading';
-  const status = profile?.profileStatus ?? 'pending';
-  const editable = canEditProfile(status);
+  const status = authUser?.tradieProfileStatus ?? profile?.profileStatus ?? 'pending';
+  const approved = isTradieProfileApproved(status);
+  const loading = approved && profileFetchStatus === 'loading' && !profile;
 
   useFocusEffect(
     useCallback(() => {
+      if (!approved) return;
       void dispatch(fetchMyTradieProfileThunk());
       void dispatch(fetchTradieStatsThunk());
-    }, [dispatch]),
+    }, [dispatch, approved]),
   );
 
-  const onPrimaryAction = useCallback(() => {
-    if (editable && profile) {
-      const initial = myTradieProfileToDraft(profile, {
-        name: authUser?.name,
-        phone: authUser?.phone,
-        email: authUser?.email,
-        avatar: authUser?.avatar,
-      });
-      navigation.navigate('BecomeTradie', { mode: 'edit', initial });
-      return;
-    }
-    Alert.alert('Contact', 'Your application is still being reviewed. We will notify you when it is ready.');
-  }, [editable, profile, authUser, navigation]);
+  const onEditProfile = useCallback(() => {
+    if (!approved || !profile) return;
+    const initial = myTradieProfileToDraft(profile, {
+      name: authUser?.name,
+      phone: authUser?.phone,
+      email: authUser?.email,
+      avatar: authUser?.avatar,
+    });
+    navigation.navigate('BecomeTradie', { mode: 'edit', initial });
+  }, [approved, profile, authUser, navigation]);
 
-  const title =
-    status === 'rejected'
+  const title = approved
+    ? 'Manage your tradie profile'
+    : status === 'rejected'
       ? 'Your application was not approved'
-      : editable
-        ? 'Your application is reviewed'
-        : 'Your application is under review';
+      : 'Application under review';
 
-  const subtitle =
-    profile?.businessName ??
-    'Find what you are looking for, right in your local community.';
+  const subtitle = approved
+    ? (profile?.businessName ?? 'Update your business details and work photos.')
+    : REVIEW_PENDING_MESSAGE;
 
   const formatRating = (value: number | undefined) =>
     value != null && Number.isFinite(value) ? value.toFixed(1) : '—';
@@ -89,7 +86,7 @@ export function ManageTradiesScreen() {
       </View>
 
       <View style={[styles.content, { paddingBottom: Math.max(insets.bottom, 14) + 24 }]}>
-        {loading && !profile ? (
+        {loading ? (
           <ActivityIndicator color={colors.primary} style={styles.loader} />
         ) : (
           <View style={styles.reviewCard}>
@@ -97,21 +94,28 @@ export function ManageTradiesScreen() {
               <Text style={styles.statusPill}>{profileStatusLabel(status)}</Text>
               <Text style={styles.reviewTitle}>{title}</Text>
               <Text style={styles.reviewSubtitle}>{subtitle}</Text>
-              {stats ? (
+              {approved && stats ? (
                 <Text style={styles.statsLine}>
                   {stats.visitCount} visits · {stats.reviewCount} reviews · {formatRating(stats.averageRating)} rating
                 </Text>
               ) : null}
             </View>
 
-            <Pressable
-              accessibilityRole="button"
-              accessibilityLabel={editable ? 'Edit profile' : 'Contact'}
-              onPress={onPrimaryAction}
-              style={({ pressed }) => [styles.contactBtn, pressed && styles.pressed]}
-            >
-              <Text style={styles.contactBtnText}>{editable ? 'Edit' : 'Contact'}</Text>
-            </Pressable>
+            {approved ? (
+              <Pressable
+                accessibilityRole="button"
+                accessibilityLabel="Edit tradie profile"
+                onPress={onEditProfile}
+                disabled={!profile}
+                style={({ pressed }) => [
+                  styles.primaryBtn,
+                  !profile && styles.primaryBtnDisabled,
+                  pressed && profile && styles.pressed,
+                ]}
+              >
+                <Text style={styles.primaryBtnText}>Edit profile</Text>
+              </Pressable>
+            ) : null}
           </View>
         )}
       </View>
@@ -162,7 +166,7 @@ const styles = StyleSheet.create({
     gap: 20,
   },
   reviewCopy: {
-    gap: 6,
+    gap: 8,
   },
   statusPill: {
     alignSelf: 'flex-start',
@@ -184,9 +188,9 @@ const styles = StyleSheet.create({
   },
   reviewSubtitle: {
     ...nunitoSans.regular,
-    fontSize: 12,
-    lineHeight: 16,
-    color: colors.placeholder,
+    fontSize: 14,
+    lineHeight: 20,
+    color: colors.onboardingBody,
   },
   statsLine: {
     fontFamily: fontFamilies.inter.regular,
@@ -195,16 +199,20 @@ const styles = StyleSheet.create({
     color: '#717171',
     marginTop: 4,
   },
-  contactBtn: {
-    height: 40,
-    width: 115,
+  primaryBtn: {
+    height: 44,
+    minWidth: 140,
     borderRadius: 8,
     backgroundColor: colors.primary,
     alignItems: 'center',
     justifyContent: 'center',
-    paddingHorizontal: 12,
+    paddingHorizontal: 16,
+    alignSelf: 'flex-start',
   },
-  contactBtnText: {
+  primaryBtnDisabled: {
+    opacity: 0.5,
+  },
+  primaryBtnText: {
     fontFamily: fontFamilies.inter.medium,
     fontSize: 14,
     lineHeight: 18,

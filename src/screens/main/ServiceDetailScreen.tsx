@@ -3,29 +3,42 @@ import {
   ActivityIndicator,
   Dimensions,
   FlatList,
-  Image,
   type ImageSourcePropType,
   NativeScrollEvent,
   NativeSyntheticEvent,
-  Platform,
   Pressable,
   ScrollView,
   StyleSheet,
   Text,
   View,
 } from 'react-native';
-import { BlurView } from 'expo-blur';
 import type { NativeStackScreenProps } from '@react-navigation/native-stack';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useAuth } from '../../context/AuthContext';
 import { ProviderReviewsSection } from '../../components/ProviderReviewsSection';
 import type { ReviewEntry } from '../../components/ProviderReviewsSection';
-import { AppButton, Icon, PillChip, WorkPhotoGrid } from '../../components/ui';
+import {
+  AdaptiveBlurView,
+  AppButton,
+  Icon,
+  PillChip,
+  RemoteImage,
+  WorkPhotoGrid,
+  useToast,
+} from '../../components/ui';
 import type { RootStackParamList } from '../../navigation/types';
 import { colors, fontFamilies, nunitoSans } from '../../theme';
 import { fetchTradieByIdApi, fetchTradieDetailsApi, fetchTradieContactApi } from '../../api/tradies';
 import type { TradieProfile, TradieReviewsDetail } from '../../api/tradieTypes';
-import { normalizeTradieReviewsDetail, normalizeWorkDetailImages } from '../../utils/tradieDetails';
+import {
+  normalizeTradieProfile,
+  normalizeTradieReviewsDetail,
+  normalizeWorkDetailImages,
+} from '../../utils/tradieDetails';
+import { resolveMediaUrl } from '../../utils/mediaUrl';
+import { prefetchRemoteImages } from '../../utils/prefetchImages';
+import { useAppDispatch } from '../../store/hooks';
+import { createConversationThunk } from '../../store/slices/chatThunks';
 
 const { width: SCREEN_W } = Dimensions.get('window');
 const H_PADDING = 20;
@@ -45,7 +58,14 @@ function formatHours(
   if (!timeFrom && !timeTo && openDays.length === 0) return '';
   const days =
     openDays.length > 0
-      ? `(${openDays.map((d) => d.charAt(0).toUpperCase() + d.slice(1, 3)).join('-')})`
+      ? `(${openDays
+          .map((d) => {
+            const day = String(d).trim();
+            if (!day) return '';
+            return day.charAt(0).toUpperCase() + day.slice(1, 3);
+          })
+          .filter(Boolean)
+          .join('-')})`
       : '';
   const hours =
     timeFrom && timeTo ? `Open ${timeFrom} – ${timeTo}` : timeFrom ? `From ${timeFrom}` : '';
@@ -72,6 +92,8 @@ export function ServiceDetailScreen({ navigation, route }: Props) {
   const insets = useSafeAreaInsets();
   const { isLoggedIn } = useAuth();
   const { providerId } = route.params;
+  const dispatch = useAppDispatch();
+  const { showToast } = useToast();
 
   const [profile, setProfile] = useState<TradieProfile | null>(null);
   const [workPhotoUris, setWorkPhotoUris] = useState<string[]>([]);
@@ -100,7 +122,12 @@ export function ServiceDetailScreen({ navigation, route }: Props) {
     fetchTradieByIdApi(providerId)
       .then((profileRes) => {
         if (cancelled) return;
-        setProfile(profileRes.data);
+        const normalized = normalizeTradieProfile(profileRes.data);
+        if (!normalized) {
+          setError('Profile not found.');
+          return;
+        }
+        setProfile(normalized);
       })
       .catch((err: unknown) => {
         if (cancelled) return;
@@ -137,6 +164,12 @@ export function ServiceDetailScreen({ navigation, route }: Props) {
       cancelled = true;
     };
   }, [tab, providerId, workFetched]);
+
+  useEffect(() => {
+    if (workPhotoUris.length > 0) {
+      void prefetchRemoteImages(workPhotoUris);
+    }
+  }, [workPhotoUris]);
 
   useEffect(() => {
     if (tab !== 'reviews' || reviewsFetched) return;
@@ -181,6 +214,64 @@ export function ServiceDetailScreen({ navigation, route }: Props) {
     }
   }, [isLoggedIn, providerId]);
 
+  // Track a pending "Start chat" dispatch so we can disable the message
+  // button while the conversation is being created.
+  const [startingChat, setStartingChat] = useState(false);
+
+  /**
+   * "Start chat" entry point (Task 14.1, Req 8.1, 8.2, 8.3, 8.5).
+   *
+   * Dispatches `createConversationThunk(otherUserId)` for the tradie's
+   * underlying user (`profile.user.id`) and, on success, navigates to
+   * `ChatDetail` with the returned conversation id. On a
+   * `CHAT_VALIDATION_ERROR` (e.g. attempting to message yourself) we
+   * surface the server message inline via toast and stay on this screen.
+   */
+  const startChat = useCallback(async () => {
+    if (!isLoggedIn || !profile || startingChat) return;
+
+    // Best-effort contact log alongside opening the chat.
+    logContact();
+
+    const otherUserId = profile.user.id;
+    if (!otherUserId) {
+      showToast({ message: 'Unable to start chat with this provider.', type: 'error' });
+      return;
+    }
+
+    setStartingChat(true);
+    try {
+      const result = await dispatch(createConversationThunk(otherUserId));
+      if (createConversationThunk.fulfilled.match(result)) {
+        const conv = result.payload;
+        const avatarUri = conv.otherParticipant.avatar ?? profile.user.avatar ?? undefined;
+        navigation.navigate('ChatDetail', {
+          chatId: conv.id,
+          name: conv.otherParticipant.name || profile.user.name,
+          avatarUri,
+        });
+      } else {
+        // Rejected — surface the server message in this originating screen
+        // (Req 8.5: CHAT_VALIDATION_ERROR for "with yourself" and similar).
+        const message =
+          typeof result.payload === 'string'
+            ? result.payload
+            : 'Could not start the conversation.';
+        showToast({ message, type: 'error', duration: 5_000 });
+      }
+    } finally {
+      setStartingChat(false);
+    }
+  }, [
+    dispatch,
+    isLoggedIn,
+    logContact,
+    navigation,
+    profile,
+    showToast,
+    startingChat,
+  ]);
+
   const openLogin = useCallback(() => {
     navigation.navigate('SignIn');
   }, [navigation]);
@@ -193,7 +284,7 @@ export function ServiceDetailScreen({ navigation, route }: Props) {
         ? [profile.businessImage]
         : [];
     return images.length > 0
-      ? images.map((uri) => ({ uri }))
+      ? images.map((uri) => ({ uri: resolveMediaUrl(uri) ?? uri }))
       : [require('../../../assets/first.png')];
   }, [profile]);
 
@@ -207,11 +298,6 @@ export function ServiceDetailScreen({ navigation, route }: Props) {
   );
 
   const dots = useMemo(() => heroSlides.map((_, i) => i), [heroSlides]);
-
-  const workPhotoSources = useMemo<ImageSourcePropType[]>(
-    () => workPhotoUris.map((uri) => ({ uri })),
-    [workPhotoUris],
-  );
 
   const reviewEntries = useMemo<ReviewEntry[]>(
     () => (reviewsDetail?.items ?? []).map(toReviewEntry),
@@ -287,7 +373,12 @@ export function ServiceDetailScreen({ navigation, route }: Props) {
             onMomentumScrollEnd={onHeroScroll}
             onScrollEndDrag={onHeroScroll}
             renderItem={({ item }) => (
-              <Image source={item} style={styles.heroImage} resizeMode="cover" />
+              <RemoteImage
+                uri={typeof item === 'object' && item && 'uri' in item ? String(item.uri) : null}
+                fallback={require('../../../assets/first.png')}
+                style={styles.heroImage}
+                resizeMode="cover"
+              />
             )}
             getItemLayout={(_, index) => ({
               length: HERO_W,
@@ -377,9 +468,11 @@ export function ServiceDetailScreen({ navigation, route }: Props) {
                   <View style={styles.contactRow}>
                     <View style={styles.contactLeft}>
                       {profile.user.avatar ? (
-                        <Image
-                          source={{ uri: profile.user.avatar }}
+                        <RemoteImage
+                          uri={profile.user.avatar}
+                          fallback={require('../../../assets/signup/customer.png')}
                           style={styles.contactAvatar}
+                          resizeMode="cover"
                         />
                       ) : (
                         <View style={[styles.contactAvatar, styles.contactAvatarPlaceholder]}>
@@ -402,9 +495,11 @@ export function ServiceDetailScreen({ navigation, route }: Props) {
                       </Pressable>
                       <Pressable
                         style={styles.iconAction}
+                        accessibilityRole="button"
                         accessibilityLabel="Message"
-                        disabled={!isLoggedIn}
-                        onPress={logContact}
+                        accessibilityState={{ disabled: !isLoggedIn || startingChat }}
+                        disabled={!isLoggedIn || startingChat}
+                        onPress={startChat}
                       >
                         <Icon name="bubble-chat" width={18} height={18} color={colors.primary} />
                       </Pressable>
@@ -433,14 +528,7 @@ export function ServiceDetailScreen({ navigation, route }: Props) {
 
               {!isLoggedIn && (
                 <>
-                  <BlurView
-                    intensity={Platform.OS === 'ios' ? 10 : 10}
-                    tint="light"
-                    experimentalBlurMethod={
-                      Platform.OS === 'android' ? 'dimezisBlurView' : undefined
-                    }
-                    style={styles.lockedBlur}
-                  />
+                  <AdaptiveBlurView intensity={10} tint="light" style={styles.lockedBlur} />
                   <View style={styles.loginOverlay} pointerEvents="box-none">
                     <AppButton
                       title="Login"
@@ -461,7 +549,7 @@ export function ServiceDetailScreen({ navigation, route }: Props) {
           (workLoading ? (
             <ActivityIndicator color={colors.primary} style={styles.tabLoader} />
           ) : (
-            <WorkPhotoGrid photos={workPhotoSources} />
+            <WorkPhotoGrid photoUris={workPhotoUris} />
           ))}
 
         {/* ── Reviews tab ── */}
@@ -476,6 +564,8 @@ export function ServiceDetailScreen({ navigation, route }: Props) {
               totalRatings={reviewsDetail?.totalRatings ?? profile.totalRatingCount ?? 0}
               reviews={reviewEntries}
               onReviewPosted={fetchReviews}
+              isLoggedIn={isLoggedIn}
+              onLoginRequired={openLogin}
             />
           ))}
       </ScrollView>
@@ -697,7 +787,7 @@ const styles = StyleSheet.create({
     gap: 12,
   },
   lockedBlur: {
-    ...StyleSheet.absoluteFillObject,
+    overflow: 'hidden',
   },
   loginOverlay: {
     ...StyleSheet.absoluteFillObject,

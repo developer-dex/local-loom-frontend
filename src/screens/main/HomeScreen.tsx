@@ -16,7 +16,7 @@ import {
   useAppDispatch,
   selectAuthUser,
   selectCategories,
-  selectCategoriesLoading,
+  selectCategoriesStatus,
   selectTradieList,
   selectTradieListStatus,
 } from '../../store/hooks';
@@ -76,7 +76,7 @@ export function HomeScreen() {
   );
   const authUser = useAppSelector(selectAuthUser);
   const categories = useAppSelector(selectCategories);
-  const categoriesLoading = useAppSelector(selectCategoriesLoading);
+  const categoriesStatus = useAppSelector(selectCategoriesStatus);
   const tradieList = useAppSelector(selectTradieList);
   const listStatus = useAppSelector(selectTradieListStatus);
 
@@ -140,8 +140,8 @@ export function HomeScreen() {
 
   const openServiceDetail = useCallback(
     (providerId: string) => {
-      const root = navigation.getParent<NativeStackNavigationProp<RootStackParamList>>();
-      root?.navigate('ServiceDetail', { providerId });
+      if (!providerId) return;
+      navigation.navigate('ServiceDetail', { providerId });
     },
     [navigation],
   );
@@ -167,7 +167,10 @@ export function HomeScreen() {
 
   const nearYouItems = useMemo<NearYouItem[]>(() => tradieList.map(toNearYouItem), [tradieList]);
 
-  const isLoading = listStatus === 'loading';
+  const categoriesPending =
+    categoriesStatus !== 'succeeded' && categoriesStatus !== 'failed';
+  const tradiesPending = listStatus !== 'succeeded' && listStatus !== 'failed';
+  const showCategories = categoriesStatus === 'succeeded' && popularCategories.length > 0;
 
   return (
     <View style={[styles.screen, { paddingTop: insets.top }]}>
@@ -258,9 +261,9 @@ export function HomeScreen() {
               <Text style={styles.seeAll}>See all</Text>
             </Pressable>
           </View>
-          {categoriesLoading && popularCategories.length === 0 ? (
+          {categoriesPending ? (
             <ActivityIndicator color={colors.primary} style={styles.categoriesLoader} />
-          ) : (
+          ) : showCategories ? (
             <FlatList
               data={popularCategories}
               horizontal
@@ -280,19 +283,21 @@ export function HomeScreen() {
               contentContainerStyle={styles.categoriesRow}
               style={styles.categoriesList}
             />
+          ) : (
+            <Text style={styles.emptyText}>No categories available.</Text>
           )}
         </View>
 
         <View style={styles.section}>
           <Text style={styles.sectionTitleNear}>Near You</Text>
-          {isLoading ? (
+          {tradiesPending ? (
             <ActivityIndicator
               size="large"
               color={colors.primary}
               style={styles.loader}
               accessibilityLabel="Loading tradies"
             />
-          ) : (
+          ) : nearYouItems.length > 0 ? (
             <View style={styles.nearList}>
               {nearYouItems.map((item) => (
                 <NearYouCard
@@ -301,10 +306,9 @@ export function HomeScreen() {
                   onPress={() => openServiceDetail(item.id)}
                 />
               ))}
-              {nearYouItems.length === 0 && listStatus === 'succeeded' ? (
-                <Text style={styles.emptyText}>No tradies found.</Text>
-              ) : null}
             </View>
+          ) : (
+            <Text style={styles.emptyText}>No tradies available.</Text>
           )}
         </View>
       </ScrollView>

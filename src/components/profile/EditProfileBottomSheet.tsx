@@ -7,7 +7,6 @@ import {
   Modal,
   Platform,
   Pressable,
-  ScrollView,
   StyleSheet,
   Text,
   View,
@@ -17,8 +16,15 @@ import * as ImagePicker from 'expo-image-picker';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { AppButton } from '../ui/AppButton';
 import { AppTextField } from '../ui/AppTextField';
+import { KeyboardFormScrollView } from '../ui/KeyboardFormScrollView';
 import { Icon } from '../ui/Icon';
 import { colors, fontFamilies } from '../../theme';
+import {
+  AU_PHONE_DIAL_CODE,
+  AU_PHONE_E164_MAX_LENGTH,
+  sanitizeAustralianPhone,
+  validatePhone,
+} from '../../utils/validation';
 import { useAppDispatch } from '../../store/hooks';
 import { setAuthUser } from '../../store/slices/authSlice';
 import { updateUserAvatarThunk, updateUserMeThunk } from '../../store/slices/usersSlice';
@@ -63,14 +69,16 @@ export function EditProfileBottomSheet({
   const insets = useSafeAreaInsets();
   const dispatch = useAppDispatch();
   const [name, setName] = useState(initialName);
-  const [phone, setPhone] = useState(initialPhone);
+  const [phone, setPhone] = useState(() => sanitizeAustralianPhone(initialPhone).value || AU_PHONE_DIAL_CODE);
+  const [phoneError, setPhoneError] = useState<string | null>(null);
   const [photoUri, setPhotoUri] = useState<string>(initialAvatarUri);
   const [saving, setSaving] = useState(false);
 
   useEffect(() => {
     if (visible) {
       setName(initialName);
-      setPhone(initialPhone);
+      setPhone(sanitizeAustralianPhone(initialPhone).value || AU_PHONE_DIAL_CODE);
+      setPhoneError(null);
       setPhotoUri(initialAvatarUri);
     }
   }, [visible, initialName, initialPhone, initialAvatarUri]);
@@ -125,6 +133,11 @@ export function EditProfileBottomSheet({
 
   const onSave = useCallback(async () => {
     const trimmedName = name.trim();
+    const phoneValidation = validatePhone(phone, { completeOnly: true });
+    if (phoneValidation) {
+      setPhoneError(phoneValidation);
+      return;
+    }
     const trimmedPhone = phone.trim();
     const payload: EditProfilePayload = {
       name: trimmedName,
@@ -183,7 +196,7 @@ export function EditProfileBottomSheet({
       onRequestClose={onClose}
     >
       <KeyboardAvoidingView
-        behavior={Platform.OS === 'ios' ? 'padding' : undefined}
+        behavior="padding"
         style={styles.keyboardRoot}
       >
         <View style={styles.overlay}>
@@ -193,9 +206,8 @@ export function EditProfileBottomSheet({
             <View style={styles.handle} />
             <Text style={styles.sheetTitle}>Edit profile</Text>
 
-            <ScrollView
-              keyboardShouldPersistTaps="handled"
-              showsVerticalScrollIndicator={false}
+            <KeyboardFormScrollView
+              keyboardAvoiding={false}
               contentContainerStyle={styles.scrollContent}
             >
               <Pressable
@@ -228,11 +240,23 @@ export function EditProfileBottomSheet({
                 <AppTextField
                   label="Phone number"
                   value={phone}
-                  onChangeText={setPhone}
-                  placeholder="Enter phone number"
+                  onChangeText={(raw) => {
+                    const { value, hadInvalid } = sanitizeAustralianPhone(raw);
+                    const next = value || AU_PHONE_DIAL_CODE;
+                    setPhone(next);
+                    const err = validatePhone(next);
+                    setPhoneError(
+                      hadInvalid
+                        ? 'Use digits only (Australian format, e.g. 0412 345 678).'
+                        : err,
+                    );
+                  }}
+                  placeholder="412 345 678"
                   keyboardType="phone-pad"
+                  maxLength={AU_PHONE_E164_MAX_LENGTH}
                   leftIconName="smart-phone-02"
                   inputStyle={inputColor}
+                  error={phoneError ?? undefined}
                 />
               </View>
 
@@ -243,7 +267,7 @@ export function EditProfileBottomSheet({
                 containerStyle={styles.saveBtn}
               />
               {saving ? <ActivityIndicator style={styles.spinner} color={colors.primary} /> : null}
-            </ScrollView>
+            </KeyboardFormScrollView>
           </View>
         </View>
       </KeyboardAvoidingView>

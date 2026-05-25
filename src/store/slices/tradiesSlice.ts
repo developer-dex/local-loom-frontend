@@ -27,6 +27,7 @@ import {
   fetchMyTradieProfileApi,
   setupBusinessProfileApi,
   uploadWorkPhotosApi,
+  deleteWorkPhotoApi,
   fetchTradieStatsApi,
   type FetchTradiesParams,
 } from '../../api/tradies';
@@ -167,6 +168,22 @@ export const uploadWorkPhotosThunk = createAsyncThunk(
 );
 
 /**
+ * DELETE /tradies/profile/work-photos/:photoId
+ */
+export const deleteWorkPhotoThunk = createAsyncThunk(
+  'tradies/deleteWorkPhoto',
+  async (photoId: string, { rejectWithValue }) => {
+    try {
+      await deleteWorkPhotoApi(photoId);
+      return photoId;
+    } catch (err: unknown) {
+      const msg = err instanceof Error ? err.message : 'Failed to delete work photo';
+      return rejectWithValue(msg);
+    }
+  },
+);
+
+/**
  * GET /tradies/profile/stats
  * Fetches visit count, review count, and average rating for the authenticated tradie.
  */
@@ -222,6 +239,7 @@ const tradiesSlice = createSlice({
       .addCase(fetchTradiesThunk.rejected, (state, action) => {
         state.listStatus = 'failed';
         state.listError = action.payload as string;
+        state.list = [];
       });
 
     // ── fetchTradieDetail ────────────────────────────────────────────────────

@@ -1,5 +1,6 @@
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import type { AbnLookupResult } from '../api/tradieTypes';
+import type { WorkImageDraft } from '../utils/workPhotos';
 
 export type TradieApplicationStatus = 'under_review' | 'reviewed';
 
@@ -25,7 +26,7 @@ export type TradieApplicationDraft = {
   closeTime: string | null;
   openDayIds: string[];
   emergencyAvailable: boolean | null;
-  workImages: { uri: string; name: string }[];
+  workImages: WorkImageDraft[];
 };
 
 const DRAFT_KEY = '@localloom/tradie_application_draft';

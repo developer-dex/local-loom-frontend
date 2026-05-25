@@ -31,6 +31,35 @@ const navigationTheme: Theme = {
   },
 };
 
+/**
+ * Navigator-level auth guard for `ChatDetail`.
+ *
+ * Per Requirement 22.5: when a guest attempts to navigate to `ChatDetail`,
+ * redirect to `SignIn` rather than rendering the conversation. Wrapping the
+ * screen here keeps the guard independent of `ChatDetailScreen`'s contents,
+ * so future revisions of that screen don't need to re-implement the check.
+ *
+ * `isReady` gates the redirect until `hydrateAuthThunk` resolves — without
+ * this, a freshly launched app (tokens still in SecureStore, Redux still
+ * empty) would incorrectly bounce a real user to SignIn.
+ */
+function ChatDetailGuarded(_props: NativeStackScreenProps<RootStackParamList, 'ChatDetail'>) {
+  const navigation = _props.navigation;
+  const { isReady, isLoggedIn } = useAuth();
+
+  useEffect(() => {
+    if (isReady && !isLoggedIn) {
+      navigation.replace('SignIn');
+    }
+  }, [isReady, isLoggedIn, navigation]);
+
+  // Render nothing while hydrating or while the redirect is in flight, so
+  // a guest never briefly sees the chat UI.
+  if (!isReady || !isLoggedIn) return null;
+
+  return <ChatDetailScreen />;
+}
+
 function OtpScreen({ navigation, route }: NativeStackScreenProps<RootStackParamList, 'Otp'>) {
   const { identifier, identifierType, displayIdentifier, signupRole } = route.params;
   return (
@@ -156,7 +185,7 @@ export function RootNavigator() {
           <Stack.Screen name="Faq" component={FaqScreen} />
           <Stack.Screen name="BecomeTradie" component={BecomeTradieScreen} />
           <Stack.Screen name="ManageTradies" component={ManageTradiesScreen} />
-          <Stack.Screen name="ChatDetail" component={ChatDetailScreen} />
+          <Stack.Screen name="ChatDetail" component={ChatDetailGuarded} />
           <Stack.Screen name="AiSearch" component={AiSearchScreen} />
         </Stack.Navigator>
       </NavigationContainer>

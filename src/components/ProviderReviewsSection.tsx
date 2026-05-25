@@ -1,5 +1,14 @@
-import { memo, useCallback, useState } from 'react';
-import { Image, type ImageSourcePropType, StyleSheet, Text, View } from 'react-native';
+import { memo, useCallback, useEffect, useState } from 'react';
+import {
+  Image,
+  Pressable,
+  StyleSheet,
+  Text,
+  View,
+  type ImageSourcePropType,
+  type NativeSyntheticEvent,
+  type TextLayoutEventData,
+} from 'react-native';
 import { AppButton } from './ui/AppButton';
 import { Icon } from './ui/Icon';
 import { LeaveReviewModal } from './LeaveReviewModal';
@@ -63,6 +72,9 @@ export type ProviderReviewsSectionProps = {
   reviews: ReviewEntry[];
   /** Called after a successful review submission so the parent can refresh. */
   onReviewPosted?: () => void;
+  isLoggedIn?: boolean;
+  /** When guest taps Write Review — e.g. navigate to Sign In. */
+  onLoginRequired?: () => void;
 };
 
 function AggregateStars({ average, size = 22 }: { average: number; size?: number }) {
@@ -72,6 +84,47 @@ function AggregateStars({ average, size = 22 }: { average: number; size?: number
       {slots.map((variant, i) => (
         <ListStarIcon key={i} variant={variant} size={size} />
       ))}
+    </View>
+  );
+}
+
+const REVIEW_BODY_MAX_LINES = 2;
+
+function ReviewBody({ body }: { body: string }) {
+  const [expanded, setExpanded] = useState(false);
+  const [truncated, setTruncated] = useState(false);
+
+  const onMeasureLayout = useCallback((e: NativeSyntheticEvent<TextLayoutEventData>) => {
+    setTruncated(e.nativeEvent.lines.length > REVIEW_BODY_MAX_LINES);
+  }, []);
+
+  const trimmed = body.trim();
+
+  useEffect(() => {
+    setExpanded(false);
+    setTruncated(false);
+  }, [trimmed]);
+
+  if (!trimmed) return null;
+
+  return (
+    <View style={styles.reviewBodyWrap}>
+      <Text style={[styles.reviewBody, styles.reviewBodyMeasure]} onTextLayout={onMeasureLayout}>
+        {trimmed}
+      </Text>
+      <Text style={styles.reviewBody} numberOfLines={expanded ? undefined : REVIEW_BODY_MAX_LINES}>
+        {trimmed}
+      </Text>
+      {truncated ? (
+        <Pressable
+          onPress={() => setExpanded((prev) => !prev)}
+          hitSlop={8}
+          accessibilityRole="button"
+          accessibilityLabel={expanded ? 'Read less' : 'Read more'}
+        >
+          <Text style={styles.readMore}>{expanded ? 'Read less' : 'Read more'}</Text>
+        </Pressable>
+      ) : null}
     </View>
   );
 }
@@ -98,7 +151,7 @@ function ReviewRow({ item }: { item: ReviewEntry }) {
           ))}
         </View>
       </View>
-      <Text style={styles.reviewBody}>{item.body}</Text>
+      <ReviewBody body={item.body} />
       {item.attachmentSources && item.attachmentSources.length > 0 ? (
         <View style={styles.attachRow}>
           {item.attachmentSources.map((src, idx) => (
@@ -117,6 +170,8 @@ export const ProviderReviewsSection = memo(function ProviderReviewsSection({
   totalRatings,
   reviews,
   onReviewPosted,
+  isLoggedIn = true,
+  onLoginRequired,
 }: ProviderReviewsSectionProps) {
   const [modalVisible, setModalVisible] = useState(false);
   const displayAverage = average ?? 0;
@@ -125,6 +180,14 @@ export const ProviderReviewsSection = memo(function ProviderReviewsSection({
   const onPost = useCallback((_payload: { rating: number; text: string }) => {
     onReviewPosted?.();
   }, [onReviewPosted]);
+
+  const onWriteReviewPress = useCallback(() => {
+    if (!isLoggedIn) {
+      onLoginRequired?.();
+      return;
+    }
+    setModalVisible(true);
+  }, [isLoggedIn, onLoginRequired]);
 
   return (
     <View style={styles.wrap}>
@@ -138,7 +201,7 @@ export const ProviderReviewsSection = memo(function ProviderReviewsSection({
         </View>
         <AppButton
           title="Write Review"
-          onPress={() => setModalVisible(true)}
+          onPress={onWriteReviewPress}
           containerStyle={styles.writeBtnPill}
           labelStyle={styles.writeBtnPillText}
         />
@@ -287,11 +350,27 @@ const styles = StyleSheet.create({
     color: colors.label,
     marginTop: 2,
   },
+  reviewBodyWrap: {
+    gap: 4,
+  },
   reviewBody: {
     ...nunitoSans.regular,
     fontSize: 12,
-    // lineHeight: 20,
+    lineHeight: 20,
     color: '#4E4E4E',
+  },
+  reviewBodyMeasure: {
+    position: 'absolute',
+    opacity: 0,
+    left: 0,
+    right: 0,
+    zIndex: -1,
+  },
+  readMore: {
+    ...nunitoSans.semibold,
+    fontSize: 12,
+    lineHeight: 18,
+    color: colors.primary,
   },
   attachRow: {
     flexDirection: 'row',

@@ -71,8 +71,16 @@ export function ServiceListScreen({ navigation, route }: Props) {
 
   const openServiceDetail = useCallback(
     (providerId: string) => {
+      if (!providerId) return;
       const root = navigation.getParent()?.getParent<NativeStackNavigationProp<RootStackParamList>>();
-      root?.navigate('ServiceDetail', { providerId });
+      if (root) {
+        root.navigate('ServiceDetail', { providerId });
+        return;
+      }
+      navigation.getParent<NativeStackNavigationProp<RootStackParamList>>()?.navigate(
+        'ServiceDetail',
+        { providerId },
+      );
     },
     [navigation],
   );

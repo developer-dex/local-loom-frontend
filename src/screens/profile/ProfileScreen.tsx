@@ -29,6 +29,7 @@ import { fetchProfileThunk } from '../../store/slices/authSlice';
 import { fetchMyTradieProfileThunk, fetchTradieStatsThunk } from '../../store/slices/tradiesSlice';
 import { deleteUserMeThunk } from '../../store/slices/usersSlice';
 import { resolveMediaUrl } from '../../utils/mediaUrl';
+import { isTradieProfileApproved } from '../../utils/authUser';
 import { profileStatusLabel } from '../../utils/tradieProfileDraft';
 import { colors, fontFamilies, nunitoSans } from '../../theme';
 
@@ -60,7 +61,9 @@ export function ProfileScreen() {
   const tradieStats = useAppSelector(selectTradieStats);
   const usersLoading = useAppSelector(selectUsersLoading);
 
-  const isTradie = authUser?.role === 'tradie';
+  const isTradie = authUser?.isTradie === true;
+  const tradieProfileStatus = authUser?.tradieProfileStatus ?? null;
+  const tradieApproved = isTradieProfileApproved(tradieProfileStatus);
 
   const [editProfileOpen, setEditProfileOpen] = useState(false);
   const [guestName, setGuestName] = useState('');
@@ -74,8 +77,8 @@ export function ProfileScreen() {
     if (!raw) return null;
     return resolveMediaUrl(raw) ?? raw;
   }, [authUser?.avatar, guestAvatarUri]);
-  const businessName = isTradie ? myTradieProfile?.businessName : null;
-  const profileStatus = isTradie ? myTradieProfile?.profileStatus : null;
+  const businessName = isTradie && tradieApproved ? myTradieProfile?.businessName : null;
+  const profileStatus = isTradie ? tradieProfileStatus : null;
 
   const tabBarSpace = 96 + Math.max(insets.bottom, 14);
 
@@ -83,11 +86,11 @@ export function ProfileScreen() {
     useCallback(() => {
       if (!isLoggedIn) return;
       void dispatch(fetchProfileThunk());
-      if (authUser?.role === 'tradie') {
+      if (isTradie && tradieApproved) {
         void dispatch(fetchMyTradieProfileThunk());
         void dispatch(fetchTradieStatsThunk());
       }
-    }, [dispatch, isLoggedIn, authUser?.role]),
+    }, [dispatch, isLoggedIn, isTradie, tradieApproved]),
   );
 
   const getRootNav = useCallback(() => {

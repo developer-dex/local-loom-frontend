@@ -20,6 +20,8 @@ export type ApiErrorEnvelope = {
 
 // ─── User ────────────────────────────────────────────────────────────────────
 
+export type TradieProfileStatus = 'pending' | 'reviewed' | 'approved' | 'rejected' | string;
+
 export type AuthUser = {
   id: string;
   name: string;
@@ -33,6 +35,12 @@ export type AuthUser = {
   lastLogin: string;
   createdAt: string;
   updatedAt: string;
+  /** From GET /users/me — user has a tradie application/profile. */
+  isTradie: boolean;
+  isCustomer: boolean;
+  profileExist: boolean;
+  /** From GET /users/me — `tradie_profile_status` (e.g. pending, approved). */
+  tradieProfileStatus: TradieProfileStatus | null;
 };
 
 export type AuthTokens = {

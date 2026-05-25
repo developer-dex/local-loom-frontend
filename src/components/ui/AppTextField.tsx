@@ -1,6 +1,7 @@
 import { StyleSheet, Text, TextInput, View, type StyleProp, type TextInputProps, type TextStyle, type ViewStyle } from 'react-native';
 import { Icon, type IconName } from './Icon';
-import { colors, fontFamilies, fontFamily, spacing } from '../../theme';
+import { useKeyboardFormScrollOnFocus } from './KeyboardFormScrollView';
+import { colors, fontFamilies, spacing } from '../../theme';
 
 export type AppTextFieldProps = TextInputProps & {
   label: string;
@@ -17,8 +18,11 @@ export function AppTextField({
   containerStyle,
   inputStyle,
   style,
+  onFocus,
   ...inputProps
 }: AppTextFieldProps) {
+  const handleFocus = useKeyboardFormScrollOnFocus(onFocus);
+
   return (
     <View style={[styles.wrap, containerStyle]}>
       <Text style={styles.label}>{label}</Text>
@@ -37,6 +41,7 @@ export function AppTextField({
           accessibilityLabel={label}
           placeholderTextColor={colors.placeholder}
           style={[styles.input, inputStyle, style]}
+          onFocus={handleFocus}
           {...inputProps}
         />
       </View>

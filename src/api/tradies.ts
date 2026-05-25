@@ -1,7 +1,7 @@
 /**
  * Tradies API — public and authenticated endpoints.
  *
- * Public (no auth):
+ * Optional auth (Bearer when logged in):
  *   GET /tradies
  *   GET /tradies/:id
  *   GET /tradies/:id/details
@@ -17,8 +17,7 @@
  *   DELETE /tradies/profile/work-photos/:photoId
  *   GET  /tradies/profile/stats
  */
-import { apiGet, apiPost } from './http';
-import { authenticatedGet, authenticatedPost, authenticatedDelete } from './client';
+import { authenticatedGet, authenticatedPost, authenticatedDelete, getWithOptionalAuth } from './client';
 import type {
   TradieListResponse,
   TradieProfileResponse,
@@ -48,14 +47,16 @@ export type FetchTradiesParams = {
 
 export type DetailType = 'about' | 'work' | 'reviews';
 
-// ─── Public endpoints ─────────────────────────────────────────────────────────
+// ─── Optional-auth endpoints (token when logged in) ───────────────────────────
 
 /**
  * GET /tradies
- * Lists tradies with optional filters. Public endpoint.
+ * Lists tradies with optional filters. Sends Bearer token when user is logged in.
  */
 export async function fetchTradiesApi(params?: FetchTradiesParams): Promise<TradieListResponse> {
-  return apiGet<TradieListResponse>('/tradies', { query: params as Record<string, string | number | boolean | null | undefined> });
+  return getWithOptionalAuth<TradieListResponse>('/tradies', {
+    query: params as Record<string, string | number | boolean | null | undefined>,
+  });
 }
 
 /**
@@ -63,7 +64,7 @@ export async function fetchTradiesApi(params?: FetchTradiesParams): Promise<Trad
  * Returns the full profile for a single tradie.
  */
 export async function fetchTradieByIdApi(id: string): Promise<TradieProfileResponse> {
-  return apiGet<TradieProfileResponse>(`/tradies/${encodeURIComponent(id)}`);
+  return getWithOptionalAuth<TradieProfileResponse>(`/tradies/${encodeURIComponent(id)}`);
 }
 
 /**
@@ -76,7 +77,7 @@ export async function fetchTradieDetailsApi(
   page?: number,
   limit?: number,
 ): Promise<TradieDetailsResponse> {
-  return apiGet<TradieDetailsResponse>(`/tradies/${encodeURIComponent(id)}/details`, {
+  return getWithOptionalAuth<TradieDetailsResponse>(`/tradies/${encodeURIComponent(id)}/details`, {
     query: { type, page, limit },
   });
 }
@@ -90,7 +91,7 @@ export async function fetchTradieReviewsApi(
   page?: number,
   limit?: number,
 ): Promise<TradieReviewsResponse> {
-  return apiGet<TradieReviewsResponse>(`/tradies/${encodeURIComponent(id)}/reviews`, {
+  return getWithOptionalAuth<TradieReviewsResponse>(`/tradies/${encodeURIComponent(id)}/reviews`, {
     query: { page, limit },
   });
 }
@@ -100,7 +101,7 @@ export async function fetchTradieReviewsApi(
  * Returns work photos for a tradie.
  */
 export async function fetchTradieWorkPhotosApi(id: string): Promise<WorkPhotosResponse> {
-  return apiGet<WorkPhotosResponse>(`/tradies/${encodeURIComponent(id)}/work-photos`);
+  return getWithOptionalAuth<WorkPhotosResponse>(`/tradies/${encodeURIComponent(id)}/work-photos`);
 }
 
 // ─── Authenticated endpoints ──────────────────────────────────────────────────

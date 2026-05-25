@@ -2,9 +2,7 @@ import { memo, useCallback, useEffect, useState } from 'react';
 import {
   KeyboardAvoidingView,
   Modal,
-  Platform,
   Pressable,
-  ScrollView,
   StyleSheet,
   Text,
   TextInput,
@@ -13,6 +11,7 @@ import {
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { AppButton } from './ui/AppButton';
 import { Icon } from './ui/Icon';
+import { KeyboardFormScrollView, useKeyboardFormScrollOnFocus } from './ui/KeyboardFormScrollView';
 import { StarRatingInput } from './ui/StarRatingInput';
 import { useToast } from './ui/Toast';
 import { colors, fontFamilies, nunitoSans } from '../theme';
@@ -73,14 +72,11 @@ export const LeaveReviewModal = memo(function LeaveReviewModal({
   }, [rating, text, tradieProfileId, onPost, onClose, showToast]);
 
   const canPost = rating >= 1 && !submitting;
+  const handleReviewFocus = useKeyboardFormScrollOnFocus();
 
   return (
     <Modal visible={visible} animationType="slide" transparent onRequestClose={onClose}>
-      <KeyboardAvoidingView
-        style={styles.flex}
-        behavior={Platform.OS === 'ios' ? 'padding' : undefined}
-        keyboardVerticalOffset={0}
-      >
+      <KeyboardAvoidingView style={styles.flex} behavior="padding" keyboardVerticalOffset={0}>
         <View style={styles.overlay}>
           <Pressable style={styles.backdrop} onPress={onClose} accessibilityLabel="Dismiss" />
           <View style={[styles.sheet, { paddingBottom: Math.max(insets.bottom, 20) }]}>
@@ -91,9 +87,8 @@ export const LeaveReviewModal = memo(function LeaveReviewModal({
               </Pressable>
             </View>
 
-            <ScrollView
-              keyboardShouldPersistTaps="handled"
-              showsVerticalScrollIndicator={false}
+            <KeyboardFormScrollView
+              keyboardAvoiding={false}
               contentContainerStyle={styles.sheetScroll}
             >
               <Text style={styles.modalTitle}>Leave a Review for {providerName}</Text>
@@ -111,6 +106,7 @@ export const LeaveReviewModal = memo(function LeaveReviewModal({
                 textAlignVertical="top"
                 value={text}
                 onChangeText={setText}
+                onFocus={handleReviewFocus}
                 accessibilityLabel="Review text"
               />
 
@@ -119,7 +115,7 @@ export const LeaveReviewModal = memo(function LeaveReviewModal({
               <Text style={styles.disclaimer}>
                 All reviews on LocalLoom are verified within 48 hours before posting to ensure authenticity and accuracy.
               </Text>
-            </ScrollView>
+            </KeyboardFormScrollView>
           </View>
         </View>
       </KeyboardAvoidingView>

@@ -12,7 +12,6 @@ import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { CategoryTile } from '../../components/category';
 import { Icon } from '../../components/ui';
 import { useToast } from '../../components/ui';
-import { SERVICE_CATEGORIES } from '../../data/categories';
 import type { CategoryStackParamList } from '../../navigation/categoryTypes';
 import {
   useAppDispatch,
@@ -23,6 +22,8 @@ import {
 } from '../../store/hooks';
 import { fetchCategoriesThunk } from '../../store/slices/categoriesSlice';
 import { colors, fontFamilies, nunitoSans } from '../../theme';
+import { prefetchRemoteImages } from '../../utils/prefetchImages';
+import { resolveMediaUrl } from '../../utils/mediaUrl';
 import type { IconName } from '../../components/ui/Icon';
 
 type Props = NativeStackScreenProps<CategoryStackParamList, 'CategoryHome'>;
@@ -63,24 +64,31 @@ export function CategoryScreen({ navigation }: Props) {
     }
   }, [apiError, showToast]);
 
-  // Use API data when available, fall back to local mock data
-  const displayCategories = useMemo(() => {
+  // Warm image cache so category tiles load faster on scroll
+  useEffect(() => {
     if (apiCategories.length > 0) {
-      return apiCategories.map((c) => ({
-        id: c.id,
-        title: c.name,
-        imageUri: c.icon,
-        icon: ICON_FALLBACK[c.name] as IconName | undefined,
-      }));
+      void prefetchRemoteImages(apiCategories.map((c) => c.icon));
     }
-    // Fallback to mock while loading or on error
-    return SERVICE_CATEGORIES.map((c) => ({
-      id: c.id,
-      title: c.title,
-      imageUri: null,
-      icon: c.icon,
-    }));
   }, [apiCategories]);
+
+  const displayCategories = useMemo(() => {
+    if (status !== 'succeeded' || apiCategories.length === 0) {
+      return [];
+    }
+    return apiCategories.map((c) => ({
+      id: c.id,
+      title: c.name,
+      imageUri: resolveMediaUrl(c.icon) ?? c.icon,
+      icon: ICON_FALLBACK[c.name] as IconName | undefined,
+    }));
+  }, [apiCategories, status]);
+
+  const emptyMessage = useMemo(() => {
+    if (query.trim()) {
+      return 'No categories match your search.';
+    }
+    return 'No categories available.';
+  }, [query]);
 
   const filtered = useMemo(() => {
     const q = query.trim().toLowerCase();
@@ -95,7 +103,7 @@ export function CategoryScreen({ navigation }: Props) {
     [navigation],
   );
 
-  const isLoading = status === 'loading' && apiCategories.length === 0;
+  const isLoading = status !== 'succeeded' && status !== 'failed';
 
   return (
     <View style={[styles.screen, { paddingTop: insets.top }]}>
@@ -135,7 +143,9 @@ export function CategoryScreen({ navigation }: Props) {
             />
           )}
           ListEmptyComponent={
-            <Text style={styles.empty}>No categories match your search.</Text>
+            <View style={styles.emptyWrap}>
+              <Text style={styles.empty}>{emptyMessage}</Text>
+            </View>
           }
         />
       )}
@@ -193,6 +203,14 @@ const styles = StyleSheet.create({
   },
   listContent: {
     paddingTop: 4,
+    flexGrow: 1,
+  },
+  emptyWrap: {
+    flex: 1,
+    alignItems: 'center',
+    justifyContent: 'center',
+    paddingTop: 48,
+    minHeight: 200,
   },
   empty: {
     ...nunitoSans.regular,

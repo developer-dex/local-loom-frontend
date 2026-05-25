@@ -26,6 +26,28 @@ export {
   deleteWorkPhotoApi,
   fetchTradieStatsApi,
 } from './tradies';
+export {
+  listConversationsApi,
+  getConversationApi,
+  createConversationApi,
+  listMessagesApi,
+  sendMessageApi,
+  uploadAttachmentsApi,
+  markReadApi,
+} from './chat';
+export {
+  mapApiError,
+  logChatError,
+  reportChatError,
+  redactForLog,
+  setChatErrorLogger,
+  REDACTED,
+} from './chatErrors';
+export type {
+  ChatErrorOutcome,
+  ChatErrorSource,
+  ChatErrorSink,
+} from './chatErrors';
 export { ApiError } from './errors';
 export type { ApiRequestOptions, HttpMethod, QueryParams } from './types';
 export type {
@@ -77,3 +99,35 @@ export type {
 } from './tradieTypes';
 export type { UserProfile, UpdateUserRequest, UserMeResponse, UpdateUserResponse, DeleteUserResponse } from './userTypes';
 export type { FetchTradiesParams, DetailType } from './tradies';
+export type {
+  AttachmentDescriptor,
+  MessageType,
+  MessageStatus,
+  MessageSender,
+  MessagePayload,
+  ConversationLastMessage,
+  ConversationListItem,
+  ListConversationsParams,
+  PaginatedMeta,
+  ListConversationsResponse,
+  GetConversationResponse,
+  CreateConversationResponse,
+  ListMessagesParams,
+  CursorMeta,
+  ListMessagesResponse,
+  SendMessageRequest,
+  SendMessageResponse,
+  UploadAttachmentsResponse,
+  MarkReadRequest,
+  MarkReadResponse,
+  ChatTypingEvent,
+  ChatReadEvent,
+  ChatOnlineStatusEvent,
+  ChatConversationUpdatedEvent,
+  ChatNotificationEvent,
+  ChatSocketError,
+  ChatSendAck,
+  ChatMarkReadAck,
+  ChatErrorCode,
+  PickedAsset,
+} from './chatTypes';

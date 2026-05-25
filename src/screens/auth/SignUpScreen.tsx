@@ -1,19 +1,19 @@
 import { useEffect, useMemo, useState } from 'react';
-import {
-  Image,
-  KeyboardAvoidingView,
-  Platform,
-  Pressable,
-  ScrollView,
-  StyleSheet,
-  Text,
-  View,
-} from 'react-native';
+import { Image, Pressable, StyleSheet, Text, View } from 'react-native';
 import * as ImagePicker from 'expo-image-picker';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
-import { AppButton, AppTextField, Icon } from '../../components/ui';
+import { AppButton, AppTextField, Icon, KeyboardFormScrollView } from '../../components/ui';
 import { colors, fontFamilies, nunitoSans, spacing } from '../../theme';
-import { sanitizeEmail, sanitizeName, validateEmail, validateName, validatePhone } from '../../utils';
+import {
+  AU_PHONE_E164_MAX_LENGTH,
+  AU_PHONE_DIAL_CODE,
+  sanitizeAustralianPhone,
+  sanitizeEmail,
+  sanitizeName,
+  validateEmail,
+  validateName,
+  validatePhone,
+} from '../../utils';
 import { useAppDispatch, useAppSelector, selectAuthStatus, selectAuthError } from '../../store/hooks';
 import { signupThunk, clearError } from '../../store/slices/authSlice';
 import { useToast } from '../../components/ui';
@@ -37,7 +37,7 @@ export function SignUpScreen({ onContinue, onBack, onSignIn, onSkipToHome }: Pro
   const apiError = useAppSelector(selectAuthError);
 
   const [role, setRole] = useState<Role | null>(null);
-  const [mobile, setMobile] = useState('+');
+  const [mobile, setMobile] = useState(AU_PHONE_DIAL_CODE);
   const [fullName, setFullName] = useState('');
   const [email, setEmail] = useState('');
   const [photoUri, setPhotoUri] = useState<string | null>(null);
@@ -74,14 +74,15 @@ export function SignUpScreen({ onContinue, onBack, onSignIn, onSkipToHome }: Pro
   const canSubmit = useMemo(() => {
     if (!role) return false;
     if (!fullName.trim() || !email.trim() || !mobile.trim()) return false;
-    if (validateName(fullName) || validateEmail(email) || validatePhone(mobile)) return false;
+    if (validateName(fullName) || validateEmail(email) || validatePhone(mobile, { completeOnly: true }))
+      return false;
     return true;
   }, [role, fullName, email, mobile]);
 
   const onSubmit = async () => {
     const ne = validateName(fullName);
     const ee = validateEmail(email);
-    const pe = validatePhone(mobile);
+    const pe = validatePhone(mobile, { completeOnly: true });
     setNameError(ne);
     setEmailError(ee);
     setPhoneError(pe);
@@ -103,19 +104,14 @@ export function SignUpScreen({ onContinue, onBack, onSignIn, onSkipToHome }: Pro
   };
 
   return (
-    <KeyboardAvoidingView
+    <KeyboardFormScrollView
       style={styles.flex}
-      behavior={Platform.OS === 'ios' ? 'padding' : undefined}
-      keyboardVerticalOffset={insets.top + 8}
+      keyboardVerticalOffset={8}
+      contentContainerStyle={[
+        styles.scroll,
+        { paddingTop: insets.top, paddingBottom: Math.max(insets.bottom, spacing.lg) },
+      ]}
     >
-      <ScrollView
-        contentContainerStyle={[
-          styles.scroll,
-          { paddingTop: insets.top, paddingBottom: Math.max(insets.bottom, spacing.lg) },
-        ]}
-        keyboardShouldPersistTaps="handled"
-        showsVerticalScrollIndicator={false}
-      >
         <View style={styles.topNav}>
           <Pressable onPress={onBack} hitSlop={12} style={styles.backBtn} accessibilityRole="button" accessibilityLabel="Go back">
             <Icon name="arrow-left-01" width={20} height={20} />
@@ -207,12 +203,15 @@ export function SignUpScreen({ onContinue, onBack, onSignIn, onSkipToHome }: Pro
             autoComplete="tel"
             value={mobile}
             onChangeText={(raw) => {
-              const digits = raw.replace(/[^\d]/g, '');
-              const e164 = `+${digits}`;
-              setMobile(e164);
-              setPhoneError(validatePhone(e164));
+              const { value, hadInvalid } = sanitizeAustralianPhone(raw);
+              setMobile(value || AU_PHONE_DIAL_CODE);
+              const err = validatePhone(value || AU_PHONE_DIAL_CODE);
+              setPhoneError(
+                hadInvalid ? 'Use digits only (Australian format, e.g. 0412 345 678).' : err,
+              );
             }}
-            placeholder="+61412345678"
+            maxLength={AU_PHONE_E164_MAX_LENGTH}
+            placeholder="Phone number"
             error={phoneError ?? undefined}
           />
         </View>
@@ -237,8 +236,7 @@ export function SignUpScreen({ onContinue, onBack, onSignIn, onSkipToHome }: Pro
           <Text style={styles.legalLink}>Terms & Conditions</Text> and{' '}
           <Text style={styles.legalLink}>Privacy Policy</Text>
         </Text>
-      </ScrollView>
-    </KeyboardAvoidingView>
+    </KeyboardFormScrollView>
   );
 }
 
