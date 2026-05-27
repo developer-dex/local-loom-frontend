@@ -5,6 +5,7 @@ import type { IdentifierType, UserRole } from '../api/authTypes';
 
 export type RootStackParamList = {
   Onboarding: undefined;
+  RoleSelection: undefined;
   SignUp: undefined;
   SignIn: undefined;
   Otp: {
@@ -17,7 +18,7 @@ export type RootStackParamList = {
   };
   MainTabs: NavigatorScreenParams<MainTabParamList> | undefined;
   AiSearch: undefined;
-  ServiceDetail: { providerId: string };
+  ServiceDetail: { providerId: string; isFavourite?: boolean };
   TermsAndConditions: undefined;
   PrivacyPolicy: undefined;
   HelpSupport: undefined;

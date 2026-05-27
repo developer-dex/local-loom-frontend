@@ -98,6 +98,7 @@ import { setActiveConversation } from '../../store/slices/chatSlice';
 import {
   selectIsOtherOnline,
   selectOrderedMessages,
+  selectOtherParticipantLastReadMessageId,
 } from '../../store/slices/chatSelectors';
 import type { LocalMessage } from '../../store/slices/chatSlice';
 import type { RootStackParamList } from '../../navigation/types';
@@ -200,7 +201,7 @@ export function ChatDetailScreen() {
   );
   const presenceOnline = useAppSelector(selectIsOtherOnline(chatId));
   const lastReadMessageId = useAppSelector(
-    (s) => s.chat.readByConversation[chatId]?.lastReadMessageId ?? null,
+    selectOtherParticipantLastReadMessageId(chatId),
   );
   const selfUserId = useAppSelector((s) => s.auth.user?.id ?? null);
   const isLoggedIn = useAppSelector(
@@ -288,22 +289,30 @@ export function ChatDetailScreen() {
   // message id changes while the screen is focused. The ref guard prevents
   // duplicate dispatches (the same newest id firing multiple effects).
   useEffect(() => {
-    if (!chatId || !isFocused) return;
+    if (!chatId || !isFocused || !selfUserId) return;
     if (messages.length === 0) return;
-    const newest = messages[messages.length - 1];
-    // Only mark-read for messages the server has assigned a real id (i.e.
-    // not a still-pending optimistic). The `clientMessageIdIndex` would
-    // otherwise resolve to the placeholder id we generated locally.
-    if (!newest || newest.localStatus !== 'sent') return;
-    if (newest.id === lastMarkedReadId.current) return;
-    lastMarkedReadId.current = newest.id;
+    // Only mark messages from the other participant as read — marking with
+    // our own outgoing id would broadcast a self read-receipt and show "Seen"
+    // on messages the recipient has not opened yet.
+    const newestIncoming = [...messages]
+      .reverse()
+      .find(
+        (m) =>
+          m.localStatus === 'sent' &&
+          m.sender.id !== selfUserId &&
+          typeof m.id === 'string' &&
+          m.id.length > 0,
+      );
+    if (!newestIncoming) return;
+    if (newestIncoming.id === lastMarkedReadId.current) return;
+    lastMarkedReadId.current = newestIncoming.id;
     void dispatch(
       markConversationReadThunk({
         conversationId: chatId,
-        lastReadMessageId: newest.id,
+        lastReadMessageId: newestIncoming.id,
       }),
     );
-  }, [chatId, isFocused, messages, dispatch]);
+  }, [chatId, isFocused, messages, selfUserId, dispatch]);
 
   // ── Older-page loader (Req 5.3 / 5.4 / 5.5) ────────────────────────────
   const onEndReached = useCallback(() => {

@@ -19,6 +19,8 @@ export type NearYouItem = {
   reviews: string;
   /** From GET /tradies — heart is shown only when true. */
   isFavourite?: boolean;
+  /** From GET /tradies — shows emergency badge on the tile when true. */
+  isEmergencyAvailable?: boolean;
 };
 
 export type NearYouCardProps = {
@@ -38,17 +40,33 @@ export const NearYouCard = memo(function NearYouCard({ item, onPress }: NearYouC
   const statusLabel = item.status === 'open' ? 'Open' : 'Closed';
   const imageUri = imageUriFromSource(item.image);
   const showFavourite = item.isFavourite === true;
+  const showEmergency = item.isEmergencyAvailable === true;
 
   return (
-    <Pressable style={styles.card} onPress={onPress} accessibilityRole="button">
-      <RemoteImage
-        uri={imageUri}
-        fallback={FALLBACK_IMAGE}
-        style={styles.image}
-        containerStyle={styles.imageContainer}
-        resizeMode="cover"
-        accessibilityLabel={item.title}
-      />
+    <Pressable
+      style={styles.card}
+      onPress={onPress}
+      accessibilityRole="button"
+      accessibilityLabel={
+        showEmergency ? `${item.title}, emergency service available` : item.title
+      }
+    >
+      <View style={styles.imageWrap}>
+        <RemoteImage
+          uri={imageUri}
+          fallback={FALLBACK_IMAGE}
+          style={styles.image}
+          containerStyle={styles.imageContainer}
+          resizeMode="cover"
+          accessibilityLabel={item.title}
+        />
+        {showEmergency ? (
+          <View style={styles.emergencyBadge} pointerEvents="none" accessibilityElementsHidden>
+            <Icon name="flash" width={11} height={11} color={colors.onPrimary} />
+            <Text style={styles.emergencyBadgeText}>Emergency</Text>
+          </View>
+        ) : null}
+      </View>
       <View style={styles.body}>
         {showFavourite ? (
           <View style={styles.heartCorner} pointerEvents="none" accessibilityElementsHidden>
@@ -101,6 +119,11 @@ const styles = StyleSheet.create({
     shadowOffset: { width: 0, height: 2 },
     elevation: 2,
   },
+  imageWrap: {
+    width: 98,
+    height: 100,
+    position: 'relative',
+  },
   imageContainer: {
     width: 98,
     height: 100,
@@ -110,6 +133,26 @@ const styles = StyleSheet.create({
     width: 98,
     height: 100,
     borderRadius: 12,
+  },
+  emergencyBadge: {
+    position: 'absolute',
+    left: 6,
+    bottom: 6,
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 3,
+    paddingVertical: 4,
+    paddingHorizontal: 6,
+    borderRadius: 10,
+    backgroundColor: colors.primary,
+    maxWidth: 86,
+  },
+  emergencyBadgeText: {
+    ...nunitoSans.semibold,
+    fontSize: 9,
+    lineHeight: 11,
+    color: colors.onPrimary,
+    letterSpacing: 0.15,
   },
   body: {
     flex: 1,

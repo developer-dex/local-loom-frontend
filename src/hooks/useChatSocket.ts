@@ -111,7 +111,7 @@ export function useChatSocket(): void {
       // existing socket down + re-handshakes when the token changes
       // (Req 19.3 — refresh-driven reconnect within 5s, naturally bounded
       // by the React batch that flushed the new token into the store).
-      chatSocket.connect(accessToken, env.apiBaseUrl);
+      chatSocket.connect(accessToken, env.socketBaseUrl);
     } else {
       // Either token or user id is null → logout / unauthenticated.
       // Tear down the socket and wipe chat state (Req 9.2, design
@@ -205,7 +205,7 @@ export function useChatSocket(): void {
           chatSocket.disconnect();
           const token = accessTokenRef.current;
           if (token) {
-            chatSocket.connect(token, env.apiBaseUrl);
+            chatSocket.connect(token, env.socketBaseUrl);
           }
           return;
         }
@@ -286,7 +286,7 @@ export function useChatSocket(): void {
         const token = accessTokenRef.current;
         const uid = userIdRef.current;
         if (token && uid && !chatSocket.isConnected()) {
-          chatSocket.connect(token, env.apiBaseUrl);
+          chatSocket.connect(token, env.socketBaseUrl);
         }
 
         // Resync after a long-background return (Req 17.3).

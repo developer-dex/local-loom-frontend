@@ -3,7 +3,9 @@ import {
   ActivityIndicator,
   Dimensions,
   FlatList,
+  Image,
   type ImageSourcePropType,
+  Linking,
   NativeScrollEvent,
   NativeSyntheticEvent,
   Pressable,
@@ -28,6 +30,7 @@ import {
 } from '../../components/ui';
 import type { RootStackParamList } from '../../navigation/types';
 import { colors, fontFamilies, nunitoSans } from '../../theme';
+import { addFavouriteApi, isAlreadyFavouriteError, removeFavouriteApi } from '../../api/favourites';
 import { fetchTradieByIdApi, fetchTradieDetailsApi, fetchTradieContactApi } from '../../api/tradies';
 import type { TradieProfile, TradieReviewsDetail } from '../../api/tradieTypes';
 import {
@@ -37,8 +40,10 @@ import {
 } from '../../utils/tradieDetails';
 import { resolveMediaUrl } from '../../utils/mediaUrl';
 import { prefetchRemoteImages } from '../../utils/prefetchImages';
+import { phoneToTelUri } from '../../utils/validation';
 import { useAppDispatch } from '../../store/hooks';
 import { createConversationThunk } from '../../store/slices/chatThunks';
+import { patchTradieListFavourite } from '../../store/slices/tradiesSlice';
 
 const { width: SCREEN_W } = Dimensions.get('window');
 const H_PADDING = 20;
@@ -91,7 +96,7 @@ function toReviewEntry(r: TradieReviewsDetail['items'][number]): ReviewEntry {
 export function ServiceDetailScreen({ navigation, route }: Props) {
   const insets = useSafeAreaInsets();
   const { isLoggedIn } = useAuth();
-  const { providerId } = route.params;
+  const { providerId, isFavourite: routeIsFavourite } = route.params;
   const dispatch = useAppDispatch();
   const { showToast } = useToast();
 
@@ -107,6 +112,7 @@ export function ServiceDetailScreen({ navigation, route }: Props) {
 
   const [tab, setTab] = useState<DetailTab>('about');
   const [fav, setFav] = useState(false);
+  const [favLoading, setFavLoading] = useState(false);
   const [slideIndex, setSlideIndex] = useState(0);
 
   // Profile only on mount — work/reviews load when their tab is selected
@@ -114,6 +120,7 @@ export function ServiceDetailScreen({ navigation, route }: Props) {
     let cancelled = false;
     setLoading(true);
     setError(null);
+    setFav(routeIsFavourite === true);
     setWorkFetched(false);
     setReviewsFetched(false);
     setWorkPhotoUris([]);
@@ -128,6 +135,7 @@ export function ServiceDetailScreen({ navigation, route }: Props) {
           return;
         }
         setProfile(normalized);
+        setFav(normalized.isFavourite === true || routeIsFavourite === true);
       })
       .catch((err: unknown) => {
         if (cancelled) return;
@@ -140,7 +148,7 @@ export function ServiceDetailScreen({ navigation, route }: Props) {
     return () => {
       cancelled = true;
     };
-  }, [providerId]);
+  }, [providerId, routeIsFavourite, isLoggedIn]);
 
   useEffect(() => {
     if (tab !== 'work' || workFetched) return;
@@ -214,6 +222,27 @@ export function ServiceDetailScreen({ navigation, route }: Props) {
     }
   }, [isLoggedIn, providerId]);
 
+  const callProvider = useCallback(async () => {
+    if (!isLoggedIn || !profile) return;
+
+    logContact();
+
+    const tel = phoneToTelUri(profile.user.phone);
+    if (!tel) {
+      showToast({ message: 'No phone number available for this provider.', type: 'error' });
+      return;
+    }
+
+    const url = `tel:${tel}`;
+    try {
+      await Linking.openURL(url);
+    } catch {
+      showToast({ message: 'Could not open the phone app.', type: 'error' });
+    }
+  }, [isLoggedIn, profile, logContact, showToast]);
+
+  const canCall = Boolean(isLoggedIn && profile?.user.phone && phoneToTelUri(profile.user.phone));
+
   // Track a pending "Start chat" dispatch so we can disable the message
   // button while the conversation is being created.
   const [startingChat, setStartingChat] = useState(false);
@@ -276,6 +305,87 @@ export function ServiceDetailScreen({ navigation, route }: Props) {
     navigation.navigate('SignIn');
   }, [navigation]);
 
+  /** Re-fetch GET /tradies/:id; use `intendedFavourite` when the API omits isFavourite. */
+  const refreshTradieProfile = useCallback(
+    async (intendedFavourite?: boolean) => {
+      const profileRes = await fetchTradieByIdApi(providerId);
+      const normalized = normalizeTradieProfile(profileRes.data);
+      if (!normalized) return;
+      const fromApi = normalized.isFavourite === true;
+      const isFavourite = fromApi
+        ? true
+        : intendedFavourite !== undefined
+          ? intendedFavourite
+          : false;
+      setProfile({ ...normalized, isFavourite });
+      setFav(isFavourite);
+      dispatch(patchTradieListFavourite({ id: providerId, isFavourite }));
+    },
+    [dispatch, providerId],
+  );
+
+  const applyFavouriteUi = useCallback(
+    (isFavourite: boolean) => {
+      setFav(isFavourite);
+      setProfile((prev) => (prev ? { ...prev, isFavourite } : prev));
+      dispatch(patchTradieListFavourite({ id: providerId, isFavourite }));
+      navigation.setParams({ isFavourite });
+    },
+    [dispatch, navigation, providerId],
+  );
+
+  const toggleFavourite = useCallback(async () => {
+    if (!isLoggedIn) {
+      openLogin();
+      return;
+    }
+    if (favLoading || !providerId) return;
+
+    // Only live UI + profile state — route param is initial hint only (stale after toggles).
+    const currentlyFav = fav || profile?.isFavourite === true;
+    const nextFav = !currentlyFav;
+    setFavLoading(true);
+    applyFavouriteUi(nextFav);
+    try {
+      if (nextFav) {
+        await addFavouriteApi({ tradieProfileId: providerId });
+      } else {
+        await removeFavouriteApi(providerId);
+      }
+      await refreshTradieProfile(nextFav);
+    } catch (err: unknown) {
+      applyFavouriteUi(currentlyFav);
+      if (nextFav && isAlreadyFavouriteError(err)) {
+        applyFavouriteUi(true);
+        try {
+          await refreshTradieProfile(true);
+        } catch {
+          /* keep optimistic favourited state */
+        }
+        return;
+      }
+      showToast({
+        message: err instanceof Error ? err.message : 'Could not update favourite.',
+        type: 'error',
+        duration: 5_000,
+      });
+    } finally {
+      setFavLoading(false);
+    }
+  }, [
+    applyFavouriteUi,
+    fav,
+    favLoading,
+    isLoggedIn,
+    openLogin,
+    profile?.isFavourite,
+    providerId,
+    refreshTradieProfile,
+    showToast,
+  ]);
+
+  const showFavouriteHeart = fav || profile?.isFavourite === true;
+
   const heroSlides = useMemo<ImageSourcePropType[]>(() => {
     if (!profile) return [];
     const images = profile.businessImages?.length
@@ -283,8 +393,11 @@ export function ServiceDetailScreen({ navigation, route }: Props) {
       : profile.businessImage
         ? [profile.businessImage]
         : [];
-    return images.length > 0
-      ? images.map((uri) => ({ uri: resolveMediaUrl(uri) ?? uri }))
+    const resolved = images
+      .map((uri) => resolveMediaUrl(uri) ?? uri)
+      .filter((uri): uri is string => Boolean(uri));
+    return resolved.length > 0
+      ? resolved.map((uri) => ({ uri }))
       : [require('../../../assets/first.png')];
   }, [profile]);
 
@@ -363,9 +476,10 @@ export function ServiceDetailScreen({ navigation, route }: Props) {
         nestedScrollEnabled
       >
         {/* ── Hero carousel ── */}
-        <View style={styles.heroWrap}>
+        <View style={styles.heroWrap} pointerEvents="box-none">
           <FlatList
             data={heroSlides}
+            style={styles.heroList}
             keyExtractor={(_, index) => `slide-${index}`}
             horizontal
             pagingEnabled
@@ -373,12 +487,7 @@ export function ServiceDetailScreen({ navigation, route }: Props) {
             onMomentumScrollEnd={onHeroScroll}
             onScrollEndDrag={onHeroScroll}
             renderItem={({ item }) => (
-              <RemoteImage
-                uri={typeof item === 'object' && item && 'uri' in item ? String(item.uri) : null}
-                fallback={require('../../../assets/first.png')}
-                style={styles.heroImage}
-                resizeMode="cover"
-              />
+              <Image source={item} style={styles.heroImage} resizeMode="cover" />
             )}
             getItemLayout={(_, index) => ({
               length: HERO_W,
@@ -398,14 +507,18 @@ export function ServiceDetailScreen({ navigation, route }: Props) {
           ) : null}
           <Pressable
             style={styles.heroHeartBtn}
-            onPress={() => setFav(!fav)}
+            onPress={() => void toggleFavourite()}
+            disabled={favLoading}
             accessibilityRole="button"
-            accessibilityLabel={fav ? 'Remove from favorites' : 'Add to favorites'}
+            accessibilityState={{ disabled: favLoading, selected: showFavouriteHeart }}
+            accessibilityLabel={
+              showFavouriteHeart ? 'Remove from favorites' : 'Add to favorites'
+            }
           >
-            {fav ? (
-              <Icon name="heart" width={20} height={20} />
+            {showFavouriteHeart ? (
+              <Icon name="heart" width={20} height={20} color={colors.red} />
             ) : (
-              <Icon name="icn_heart" width={20} height={20} />
+              <Icon name="icn_heart" width={20} height={20} color={colors.onboardingTitle} />
             )}
           </Pressable>
           <View style={styles.dotsRow} pointerEvents="none">
@@ -456,14 +569,14 @@ export function ServiceDetailScreen({ navigation, route }: Props) {
             <View style={styles.servicesBlock}>
               <Text style={styles.servicesTitle}>Services</Text>
               <View style={styles.servicesWrap}>
-                {profile.services.map((s) => (
+                {(profile.services ?? []).map((s) => (
                   <PillChip key={s.id} variant="detail" label={s.name} />
                 ))}
               </View>
             </View>
 
-            <View style={styles.lockedSection}>
-              <View style={styles.lockedInner}>
+            <View style={styles.lockedSection} collapsable={false}>
+              <View style={styles.lockedInner} collapsable={false}>
                 <View style={styles.contactCard}>
                   <View style={styles.contactRow}>
                     <View style={styles.contactLeft}>
@@ -481,15 +594,26 @@ export function ServiceDetailScreen({ navigation, route }: Props) {
                       )}
                       <View>
                         <Text style={styles.contactName}>{profile.user.name}</Text>
-                        <Text style={styles.contactPhone}>{profile.user.phone}</Text>
+                        <Pressable
+                          onPress={() => void callProvider()}
+                          disabled={!canCall}
+                          accessibilityRole="link"
+                          accessibilityLabel={`Call ${profile.user.phone}`}
+                        >
+                          <Text style={[styles.contactPhone, canCall && styles.contactPhoneTappable]}>
+                            {profile.user.phone}
+                          </Text>
+                        </Pressable>
                       </View>
                     </View>
                     <View style={styles.contactActions}>
                       <Pressable
                         style={styles.iconAction}
-                        accessibilityLabel="Call"
-                        disabled={!isLoggedIn}
-                        onPress={logContact}
+                        accessibilityRole="button"
+                        accessibilityLabel="Call provider"
+                        accessibilityState={{ disabled: !canCall }}
+                        disabled={!canCall}
+                        onPress={() => void callProvider()}
                       >
                         <Icon name="call-02" width={18} height={18} color={colors.primary} />
                       </Pressable>
@@ -528,7 +652,13 @@ export function ServiceDetailScreen({ navigation, route }: Props) {
 
               {!isLoggedIn && (
                 <>
-                  <AdaptiveBlurView intensity={10} tint="light" style={styles.lockedBlur} />
+                  <AdaptiveBlurView
+                    intensity={10}
+                    tint="light"
+                    androidScrimOnly
+                    style={styles.lockedBlur}
+                    pointerEvents="none"
+                  />
                   <View style={styles.loginOverlay} pointerEvents="box-none">
                     <AppButton
                       title="Login"
@@ -674,11 +804,15 @@ const styles = StyleSheet.create({
     color: colors.onPrimary,
     letterSpacing: 0.2,
   },
+  heroList: {
+    flex: 1,
+  },
   heroHeartBtn: {
     position: 'absolute',
     top: 12,
     right: 12,
-    zIndex: 2,
+    zIndex: 10,
+    elevation: 10,
     width: 32,
     height: 32,
     borderRadius: 16,
@@ -787,6 +921,7 @@ const styles = StyleSheet.create({
     gap: 12,
   },
   lockedBlur: {
+    borderRadius: 16,
     overflow: 'hidden',
   },
   loginOverlay: {
@@ -842,6 +977,10 @@ const styles = StyleSheet.create({
     lineHeight: 18,
     color: '#2D3133',
     marginTop: 4,
+  },
+  contactPhoneTappable: {
+    color: colors.primary,
+    textDecorationLine: 'underline',
   },
   contactActions: {
     flexDirection: 'row',

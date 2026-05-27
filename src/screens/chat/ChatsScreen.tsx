@@ -217,7 +217,6 @@ export function ChatsScreen() {
         }}
         renderRightActions={renderRightActions(item)}
         rightThreshold={40}
-        onSwipeableOpen={() => handleMarkRead(item)}
       >
         <Pressable
           accessibilityRole="button"

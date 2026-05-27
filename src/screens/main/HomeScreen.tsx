@@ -46,16 +46,18 @@ function toNearYouItem(tradie: TradieListItem): NearYouItem {
   const imageUri = tradie.businessImage
     ? (resolveMediaUrl(tradie.businessImage) ?? tradie.businessImage)
     : undefined;
+  const services = Array.isArray(tradie.services) ? tradie.services : [];
   return {
     id: tradie.id,
     image: imageUri ? { uri: imageUri } : FALLBACK_IMAGE,
-    title: tradie.businessName,
-    category: tradie.services[0]?.name ?? '',
+    title: tradie.businessName ?? 'Business',
+    category: services[0]?.name ?? '',
     status: tradie.isOpen ? 'open' : 'closed',
     region: formatTradieRegions(tradie.regions),
     rating: String(tradie.averageRating ?? 0),
     reviews: `(${tradie.totalRatingCount ?? 0})`,
     isFavourite: tradie.isFavourite === true,
+    isEmergencyAvailable: tradie.isEmergencyAvailable === true,
   };
 }
 
@@ -115,10 +117,15 @@ export function HomeScreen() {
     if (isAiFilteredMode) {
       const categoryId = selectedCategoryId ?? route.params?.categoryId;
       const regionId = selectedRegionId ?? route.params?.regionId;
-      if (!categoryId || !regionId) return;
+      if (!categoryId && !regionId) return;
 
       dispatch(clearTradieList());
-      dispatch(fetchTradiesThunk({ categoryId, regionId }));
+      dispatch(
+        fetchTradiesThunk({
+          ...(categoryId ? { categoryId } : {}),
+          ...(regionId ? { regionId } : {}),
+        }),
+      );
       return;
     }
 
@@ -139,11 +146,22 @@ export function HomeScreen() {
   }, [categories, selectedCategoryId]);
 
   const openServiceDetail = useCallback(
-    (providerId: string) => {
+    (providerId: string, isFavourite?: boolean) => {
       if (!providerId) return;
-      navigation.navigate('ServiceDetail', { providerId });
+      const params = {
+        providerId,
+        isFavourite:
+          isFavourite === true ||
+          tradieList.find((t) => t.id === providerId)?.isFavourite === true,
+      };
+      const root = navigation.getParent<NativeStackNavigationProp<RootStackParamList>>();
+      if (root) {
+        root.navigate('ServiceDetail', params);
+        return;
+      }
+      navigation.navigate('ServiceDetail', params);
     },
-    [navigation],
+    [navigation, tradieList],
   );
 
   const goToCategoryTab = useCallback(() => {
@@ -303,7 +321,7 @@ export function HomeScreen() {
                 <NearYouCard
                   key={item.id}
                   item={item}
-                  onPress={() => openServiceDetail(item.id)}
+                  onPress={() => openServiceDetail(item.id, item.isFavourite)}
                 />
               ))}
             </View>

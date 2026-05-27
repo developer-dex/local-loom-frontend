@@ -1,12 +1,12 @@
-import { useEffect, useState } from 'react';
-import { DefaultTheme, NavigationContainer, type Theme } from '@react-navigation/native';
+import { useEffect, useRef, useState } from 'react';
+import { CommonActions, DefaultTheme, NavigationContainer, useNavigationContainerRef, type Theme } from '@react-navigation/native';
 import { createNativeStackNavigator, type NativeStackNavigationProp, type NativeStackScreenProps } from '@react-navigation/native-stack';
 import { GestureHandlerRootView } from 'react-native-gesture-handler';
 
 import { colors } from '../theme';
 import type { RootStackParamList } from './types';
 import { MainTabs } from './MainTabs';
-import { OtpVerificationScreen, SignInScreen, SignUpScreen } from '../screens/auth';
+import { OtpVerificationScreen, RoleSelectionScreen, SignInScreen, SignUpScreen } from '../screens/auth';
 import { OnboardingFlow } from '../screens/onboarding/OnboardingFlow';
 import { ServiceDetailScreen } from '../screens/main/ServiceDetailScreen';
 import { TermsAndConditionsScreen } from '../screens/profile/TermsAndConditionsScreen';
@@ -85,26 +85,41 @@ function OtpScreen({ navigation, route }: NativeStackScreenProps<RootStackParamL
   );
 }
 
+function guestInitialRoute(onboardingSeen: boolean): keyof RootStackParamList {
+  if (!onboardingSeen) return 'Onboarding';
+  return 'RoleSelection';
+}
+
 export function RootNavigator() {
   // null = still checking storage, false = show onboarding, true = skip it
   const [onboardingSeen, setOnboardingSeenState] = useState<boolean | null>(null);
   const { isReady, isLoggedIn } = useAuth();
+  const navigationRef = useNavigationContainerRef<RootStackParamList>();
+  const wasLoggedInRef = useRef(false);
 
   useEffect(() => {
     getOnboardingSeen().then((seen) => setOnboardingSeenState(seen));
   }, []);
 
-  // Wait for both: onboarding flag read AND auth hydration complete.
-  // This prevents any flash of the wrong screen.
+  // After logout, return guests to role selection instead of leaving them on home.
+  useEffect(() => {
+    if (!isReady || onboardingSeen !== true || !navigationRef.isReady()) return;
+    if (wasLoggedInRef.current && !isLoggedIn) {
+      navigationRef.dispatch(
+        CommonActions.reset({ index: 0, routes: [{ name: 'RoleSelection' }] }),
+      );
+    }
+    wasLoggedInRef.current = isLoggedIn;
+  }, [isReady, isLoggedIn, onboardingSeen, navigationRef]);
+
+  // Wait for onboarding flag AND auth hydration before first paint.
   if (onboardingSeen === null || !isReady) return null;
 
-  // If user is logged in (tokens + profile restored), go straight to MainTabs
-  // regardless of onboarding state.
+  // Logged-in users always land on home. Guests always start at role selection
+  // (after onboarding) on every cold start — choice is not persisted.
   const initialRoute: keyof RootStackParamList = isLoggedIn
     ? 'MainTabs'
-    : onboardingSeen
-      ? 'MainTabs'
-      : 'Onboarding';
+    : guestInitialRoute(onboardingSeen);
 
   const handleOnboardingComplete = async (navigate: () => void) => {
     await setOnboardingSeen();
@@ -113,7 +128,7 @@ export function RootNavigator() {
 
   return (
     <GestureHandlerRootView style={{ flex: 1, backgroundColor: colors.background }}>
-      <NavigationContainer theme={navigationTheme}>
+      <NavigationContainer ref={navigationRef} theme={navigationTheme}>
         <Stack.Navigator
           initialRouteName={initialRoute}
           screenOptions={{ headerShown: false, animation: 'slide_from_right' }}
@@ -128,11 +143,27 @@ export function RootNavigator() {
               return (
                 <OnboardingFlow
                   onComplete={() =>
-                    handleOnboardingComplete(() => navigation.replace('MainTabs'))
+                    handleOnboardingComplete(() => navigation.replace('RoleSelection'))
                   }
                   onSkip={() =>
-                    handleOnboardingComplete(() => navigation.replace('MainTabs'))
+                    handleOnboardingComplete(() => navigation.replace('RoleSelection'))
                   }
+                />
+              );
+            }}
+          />
+
+          <Stack.Screen
+            name="RoleSelection"
+            component={function RoleSelection({
+              navigation,
+            }: {
+              navigation: NativeStackNavigationProp<RootStackParamList, 'RoleSelection'>;
+            }) {
+              return (
+                <RoleSelectionScreen
+                  onSelectCustomer={() => navigation.replace('MainTabs')}
+                  onSelectProvider={() => navigation.replace('SignIn')}
                 />
               );
             }}
@@ -166,7 +197,11 @@ export function RootNavigator() {
             component={function SignIn({ navigation }: NativeStackScreenProps<RootStackParamList, 'SignIn'>) {
               return (
                 <SignInScreen
-                  onBack={() => navigation.goBack()}
+                  onBack={() =>
+                    navigation.canGoBack()
+                      ? navigation.goBack()
+                      : navigation.replace('RoleSelection')
+                  }
                   onSignUp={() => navigation.navigate('SignUp')}
                   onSendOtp={({ identifier, identifierType }) =>
                     navigation.navigate('Otp', { identifier, identifierType })

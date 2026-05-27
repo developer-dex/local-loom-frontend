@@ -131,8 +131,8 @@ export type ChatSliceState = {
   // Presence — userId → online flag.
   presence: Record<string, boolean>;
 
-  // Read receipts (other participant) per conversation.
-  readByConversation: Record<string, ConversationReadReceipt>;
+  /** Per conversation, per participant — used for "Seen" on outgoing messages. */
+  readByConversation: Record<string, Record<string, ConversationReadReceipt>>;
 
   // Rate-limit cooldown.
   sendCooldownEndsAt: number | null;
@@ -395,13 +395,22 @@ const chatSlice = createSlice({
      * cannot corrupt the list (Requirement 11.4).
      */
     upsertConversation(state, action: PayloadAction<ConversationListItem>) {
-      const conv = action.payload;
-      if (!conv || typeof conv.id !== 'string' || conv.id.length === 0) {
+      const incoming = action.payload;
+      if (!incoming || typeof incoming.id !== 'string' || incoming.id.length === 0) {
         return;
       }
-      state.conversationsById[conv.id] = conv;
-      if (!state.conversationIds.includes(conv.id)) {
-        state.conversationIds.push(conv.id);
+      const existing = state.conversationsById[incoming.id];
+      const merged: ConversationListItem = { ...incoming };
+      // Keep the higher unread badge when a server push arrives with 0
+      // after we already incremented locally from `chat:message`.
+      if (existing) {
+        const prevUnread = existing.unreadCount ?? 0;
+        const nextUnread = merged.unreadCount ?? 0;
+        merged.unreadCount = Math.max(prevUnread, nextUnread);
+      }
+      state.conversationsById[incoming.id] = merged;
+      if (!state.conversationIds.includes(incoming.id)) {
+        state.conversationIds.push(incoming.id);
       }
       sortConversationIds(state);
     },
@@ -835,7 +844,13 @@ const chatSlice = createSlice({
       if (typeof conversationId !== 'string' || conversationId.length === 0) {
         return;
       }
-      state.readByConversation[conversationId] = {
+      if (typeof userId !== 'string' || userId.length === 0) {
+        return;
+      }
+      if (!state.readByConversation[conversationId]) {
+        state.readByConversation[conversationId] = {};
+      }
+      state.readByConversation[conversationId][userId] = {
         userId,
         lastReadMessageId,
         lastReadAt,

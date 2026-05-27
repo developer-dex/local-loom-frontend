@@ -9,12 +9,57 @@ import type {
 } from '../api/tradieTypes';
 import { resolveMediaUrl } from './mediaUrl';
 
+function readString(raw: Record<string, unknown>, ...keys: string[]): string | null {
+  for (const key of keys) {
+    const value = raw[key];
+    if (value != null && value !== '') return String(value);
+  }
+  return null;
+}
+
+/** Coerce API booleans that may arrive as 1, "true", etc. */
+function readBoolean(raw: Record<string, unknown>, ...keys: string[]): boolean {
+  for (const key of keys) {
+    const value = raw[key];
+    if (value === true || value === 1) return true;
+    if (typeof value === 'string') {
+      const lower = value.trim().toLowerCase();
+      if (lower === 'true' || lower === '1' || lower === 'yes') return true;
+    }
+  }
+  return false;
+}
+
+/** Resolve favourite flag from common API field names and nested shapes. */
+export function readIsFavourite(raw: Record<string, unknown>): boolean {
+  if (
+    readBoolean(
+      raw,
+      'isFavourite',
+      'is_favourite',
+      'isFavorite',
+      'is_favorite',
+      'favourited',
+      'favorited',
+    )
+  ) {
+    return true;
+  }
+
+  const nested = raw.favourite ?? raw.favorite;
+  if (nested && typeof nested === 'object') {
+    return readBoolean(nested as Record<string, unknown>, 'isFavourite', 'is_favourite');
+  }
+
+  return false;
+}
+
 /** Normalize GET /tradies/:id — guards missing fields that crash the detail screen. */
 export function normalizeTradieProfile(data: unknown): TradieProfile | null {
   if (!data || typeof data !== 'object') return null;
 
   let raw = data as Record<string, unknown>;
-  if (raw.data && typeof raw.data === 'object' && !raw.businessName && !raw.id) {
+  if (raw.data && typeof raw.data === 'object' && !raw.businessName && !raw.business_name && !raw.id) {
     raw = raw.data as Record<string, unknown>;
   }
 
@@ -41,16 +86,18 @@ export function normalizeTradieProfile(data: unknown): TradieProfile | null {
     avatar: resolveMediaUrl(userRaw?.avatar as string | null | undefined) ?? null,
   };
 
-  const businessImages = (
-    Array.isArray(raw.businessImages) ? raw.businessImages : []
-  )
+  const businessImagesRaw = Array.isArray(raw.businessImages)
+    ? raw.businessImages
+    : Array.isArray(raw.business_images)
+      ? raw.business_images
+      : [];
+  const businessImages = businessImagesRaw
     .map((uri) => resolveMediaUrl(String(uri)) ?? String(uri))
     .filter(Boolean);
 
+  const businessImageSingle = readString(raw, 'businessImage', 'business_image');
   const businessImage =
-    resolveMediaUrl(raw.businessImage as string | null | undefined) ??
-    businessImages[0] ??
-    null;
+    resolveMediaUrl(businessImageSingle ?? undefined) ?? businessImages[0] ?? null;
 
   const openDays = Array.isArray(raw.openDays)
     ? raw.openDays.map((d) => String(d)).filter(Boolean)
@@ -58,14 +105,14 @@ export function normalizeTradieProfile(data: unknown): TradieProfile | null {
 
   return {
     id,
-    businessName: String(raw.businessName ?? 'Business'),
+    businessName: readString(raw, 'businessName', 'business_name') ?? 'Business',
     businessImage,
     businessImages,
-    businessLocation: raw.businessLocation != null ? String(raw.businessLocation) : null,
-    serviceDescription: raw.serviceDescription != null ? String(raw.serviceDescription) : null,
-    website: raw.website != null ? String(raw.website) : null,
-    timeFrom: raw.timeFrom != null ? String(raw.timeFrom) : null,
-    timeTo: raw.timeTo != null ? String(raw.timeTo) : null,
+    businessLocation: readString(raw, 'businessLocation', 'business_location'),
+    serviceDescription: readString(raw, 'serviceDescription', 'service_description'),
+    website: readString(raw, 'website'),
+    timeFrom: readString(raw, 'timeFrom', 'time_from'),
+    timeTo: readString(raw, 'timeTo', 'time_to'),
     openDays,
     isEmergencyAvailable: Boolean(raw.isEmergencyAvailable),
     isOpen: Boolean(raw.isOpen),
@@ -80,6 +127,7 @@ export function normalizeTradieProfile(data: unknown): TradieProfile | null {
       : [],
     workPhotos: Array.isArray(raw.workPhotos) ? raw.workPhotos : [],
     user,
+    isFavourite: readIsFavourite(raw),
   };
 }
 

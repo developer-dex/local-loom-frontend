@@ -4,14 +4,12 @@ import {
   Animated,
   Easing,
   Keyboard,
-  KeyboardAvoidingView,
-  Platform,
   Pressable,
   ScrollView,
   StyleSheet,
   Text,
   TextInput,
-  View, 
+  View,
 } from 'react-native';
 import type { NativeStackScreenProps } from '@react-navigation/native-stack';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
@@ -20,7 +18,15 @@ import { useToast } from '../../components/ui';
 import { classifyServiceApi } from '../../api/ai';
 import { ApiError } from '../../api/errors';
 import type { RootStackParamList } from '../../navigation/types';
+import { useKeyboardHeight } from '../../hooks/useKeyboardHeight';
 import { colors, fontFamilies, nunitoSans } from '../../theme';
+import {
+  AI_CLASSIFY_GENERIC_ERROR_MESSAGE,
+  AI_CLASSIFY_NO_MATCH_LABEL,
+  AI_CLASSIFY_NO_MATCH_MESSAGE,
+  isClassifyResultFullyEmpty,
+  parseClassifyIds,
+} from '../../utils/aiClassify';
 
 type Props = NativeStackScreenProps<RootStackParamList, 'AiSearch'>;
 
@@ -75,11 +81,13 @@ function ShimmerText({ text }: { text: string }) {
 
 export function AiSearchScreen({ navigation }: Props) {
   const insets = useSafeAreaInsets();
+  const keyboardHeight = useKeyboardHeight();
   const { showToast } = useToast();
   const [prompt, setPrompt] = useState('');
   const [loading, setLoading] = useState(false);
   const [submittedPrompt, setSubmittedPrompt] = useState('');
-  const [errorMessage, setErrorMessage] = useState<string | null>(null);
+  const [feedbackLabel, setFeedbackLabel] = useState<string | null>(null);
+  const [feedbackMessage, setFeedbackMessage] = useState<string | null>(null);
   const [statusIndex, setStatusIndex] = useState(0);
 
   // Cycle status lines while loading.
@@ -107,7 +115,8 @@ export function AiSearchScreen({ navigation }: Props) {
 
     Keyboard.dismiss();
     setSubmittedPrompt(trimmed);
-    setErrorMessage(null);
+    setFeedbackLabel(null);
+    setFeedbackMessage(null);
     setPrompt('');
     setLoading(true);
 
@@ -117,21 +126,33 @@ export function AiSearchScreen({ navigation }: Props) {
       const res = await classifyServiceApi({ prompt: trimmed });
       await waitForMinLoading(startedAt);
 
-      const { categoryId, regionId } = res.data;
+      if (isClassifyResultFullyEmpty(res?.data)) {
+        setFeedbackLabel(AI_CLASSIFY_NO_MATCH_LABEL);
+        setFeedbackMessage(AI_CLASSIFY_NO_MATCH_MESSAGE);
+        setLoading(false);
+        return;
+      }
+
+      const { categoryId, regionId } = parseClassifyIds(res.data);
       navigation.navigate('MainTabs', {
         screen: 'Home',
-        params: { categoryId, regionId, aiPrompt: trimmed },
+        params: {
+          ...(categoryId ? { categoryId } : {}),
+          ...(regionId ? { regionId } : {}),
+          aiPrompt: trimmed,
+        },
       });
     } catch (err: unknown) {
       await waitForMinLoading(startedAt);
 
-      const message =
+      const apiMessage =
         err instanceof ApiError
           ? err.message
           : err instanceof Error
             ? err.message
-            : 'Could not understand your request. Try again.';
-      setErrorMessage(message);
+            : null;
+      setFeedbackLabel("We're sorry");
+      setFeedbackMessage(apiMessage?.trim() || AI_CLASSIFY_GENERIC_ERROR_MESSAGE);
       setLoading(false);
     }
   }, [prompt, navigation, showToast]);
@@ -142,6 +163,9 @@ export function AiSearchScreen({ navigation }: Props) {
   }, [loading, navigation]);
 
   const canSend = prompt.trim().length >= 3 && !loading;
+
+  const composerBottomPad =
+    keyboardHeight > 0 ? keyboardHeight + insets.bottom : Math.max(insets.bottom, 12);
 
   return (
     <View style={[styles.screen, { paddingTop: insets.top }]}>
@@ -160,15 +184,13 @@ export function AiSearchScreen({ navigation }: Props) {
         <View style={styles.headerSpacer} />
       </View>
 
-      <KeyboardAvoidingView
-        style={styles.flex}
-        behavior={Platform.OS === 'ios' ? 'padding' : undefined}
-        keyboardVerticalOffset={insets.top}
-      >
+      <View style={styles.flex}>
         <ScrollView
           style={styles.flex}
           contentContainerStyle={styles.scroll}
           keyboardShouldPersistTaps="handled"
+          keyboardDismissMode="on-drag"
+          automaticallyAdjustKeyboardInsets
           showsVerticalScrollIndicator={false}
         >
           {!loading && !submittedPrompt ? (
@@ -192,15 +214,17 @@ export function AiSearchScreen({ navigation }: Props) {
             </View>
           ) : null}
 
-          {errorMessage && !loading ? (
-            <View style={styles.troubleshootRow}>
-              <Text style={styles.troubleshootLabel}>Troubleshoot</Text>
-              <Text style={styles.troubleshootText}>{errorMessage}</Text>
+          {feedbackMessage && !loading ? (
+            <View style={styles.feedbackRow}>
+              {feedbackLabel ? (
+                <Text style={styles.feedbackLabel}>{feedbackLabel}</Text>
+              ) : null}
+              <Text style={styles.feedbackText}>{feedbackMessage}</Text>
             </View>
           ) : null}
         </ScrollView>
 
-        <View style={[styles.composerWrap, { paddingBottom: Math.max(insets.bottom, 12) }]}>
+        <View style={[styles.composerWrap, { paddingBottom: composerBottomPad }]}>
           <View style={styles.composer}>
             <TextInput
               style={styles.input}
@@ -242,7 +266,7 @@ export function AiSearchScreen({ navigation }: Props) {
             </Pressable>
           </View>
         </View>
-      </KeyboardAvoidingView>
+      </View>
     </View>
   );
 }
@@ -331,23 +355,24 @@ const styles = StyleSheet.create({
     lineHeight: 20,
     color: '#9A9A9A',
   },
-  troubleshootRow: {
+  feedbackRow: {
     alignSelf: 'flex-start',
-    maxWidth: '90%',
-    marginTop: 4,
-    gap: 4,
+    maxWidth: '92%',
+    marginTop: 8,
+    gap: 6,
+    paddingHorizontal: 4,
   },
-  troubleshootLabel: {
+  feedbackLabel: {
     ...nunitoSans.semibold,
-    fontSize: 13,
-    lineHeight: 18,
-    color: colors.error,
-  },
-  troubleshootText: {
-    ...nunitoSans.regular,
     fontSize: 14,
     lineHeight: 20,
-    color: colors.error,
+    color: colors.onboardingTitle,
+  },
+  feedbackText: {
+    ...nunitoSans.regular,
+    fontSize: 14,
+    lineHeight: 22,
+    color: colors.onboardingBody,
   },
   composerWrap: {
     paddingHorizontal: 16,

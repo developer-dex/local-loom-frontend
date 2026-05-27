@@ -38,12 +38,25 @@ import type {
   TradieStats,
   BusinessSetupRequest,
 } from '../../api/tradieTypes';
+import { readIsFavourite } from '../../utils/tradieDetails';
 import { resolveMediaUrl } from '../../utils/mediaUrl';
 
 function normalizeTradieListItem(item: TradieListItem): TradieListItem {
-  if (!item.businessImage) return item;
-  const resolved = resolveMediaUrl(item.businessImage);
-  return resolved ? { ...item, businessImage: resolved } : item;
+  const services = Array.isArray(item.services) ? item.services : [];
+  const regions = Array.isArray(item.regions) ? item.regions : [];
+  const raw = item as TradieListItem & Record<string, unknown>;
+  let next: TradieListItem = {
+    ...item,
+    services,
+    regions,
+    businessName: item.businessName ?? 'Business',
+    isFavourite: item.isFavourite === true || readIsFavourite(raw),
+  };
+  if (item.businessImage) {
+    const resolved = resolveMediaUrl(item.businessImage);
+    if (resolved) next = { ...next, businessImage: resolved };
+  }
+  return next;
 }
 
 // ─── State ────────────────────────────────────────────────────────────────────
@@ -222,6 +235,14 @@ const tradiesSlice = createSlice({
       state.listStatus = 'idle';
       state.listError = null;
     },
+    /** Keep home/category list hearts in sync after favouriting on detail. */
+    patchTradieListFavourite(
+      state,
+      action: { payload: { id: string; isFavourite: boolean } },
+    ) {
+      const item = state.list.find((t) => t.id === action.payload.id);
+      if (item) item.isFavourite = action.payload.isFavourite;
+    },
   },
   extraReducers: (builder) => {
     // ── fetchTradies ─────────────────────────────────────────────────────────
@@ -303,5 +324,6 @@ const tradiesSlice = createSlice({
   },
 });
 
-export const { clearTradieDetail, clearListError, clearTradieList } = tradiesSlice.actions;
+export const { clearTradieDetail, clearListError, clearTradieList, patchTradieListFavourite } =
+  tradiesSlice.actions;
 export default tradiesSlice.reducer;

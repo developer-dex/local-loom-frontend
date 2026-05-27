@@ -12,6 +12,13 @@ export { classifyServiceApi } from './ai';
 export type { ClassifyServiceRequest, ClassifyServiceResult, ClassifyServiceResponse } from './aiTypes';
 export { fetchCategoriesApi, fetchCategoryByIdApi } from './categories';
 export { fetchRegionsApi, fetchRegionByIdApi } from './regions';
+export { addFavouriteApi, isAlreadyFavouriteError, removeFavouriteApi } from './favourites';
+export type {
+  AddFavouriteRequest,
+  AddFavouriteResponse,
+  FavouriteRecord,
+  RemoveFavouriteResponse,
+} from './favourites';
 export {
   fetchTradiesApi,
   fetchTradieByIdApi,

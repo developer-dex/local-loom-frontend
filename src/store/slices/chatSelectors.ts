@@ -186,3 +186,22 @@ export const selectUnreadCount =
   (state: RootStateWithChat): number => {
     return state.chat.conversationsById[conversationId]?.unreadCount ?? 0;
   };
+
+/**
+ * Last-read cursor for the other participant — drives the "Seen" marker on
+ * outgoing messages. Ignores the authenticated user's own read receipts.
+ */
+export const selectOtherParticipantLastReadMessageId =
+  (conversationId: string) =>
+  (state: RootStateWithChat): string | null => {
+    const selfUserId = state.auth.user?.id;
+    if (!selfUserId) return null;
+    const byUser = state.chat.readByConversation[conversationId];
+    if (!byUser) return null;
+    for (const receipt of Object.values(byUser)) {
+      if (receipt.userId !== selfUserId) {
+        return receipt.lastReadMessageId;
+      }
+    }
+    return null;
+  };

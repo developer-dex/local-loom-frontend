@@ -96,6 +96,8 @@ export type TradieProfile = {
   regions: TradieRegion[];
   workPhotos: WorkPhoto[];
   user: TradieUser;
+  /** Present when the request includes auth and the user has favourited this tradie. */
+  isFavourite?: boolean;
 };
 
 // ─── Detail tabs ──────────────────────────────────────────────────────────────

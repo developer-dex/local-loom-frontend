@@ -5,8 +5,8 @@ export type ClassifyServiceRequest = {
 };
 
 export type ClassifyServiceResult = {
-  categoryId: string;
-  regionId: string;
+  categoryId: string | null;
+  regionId: string | null;
 };
 
 export type ClassifyServiceResponse = ApiEnvelope<ClassifyServiceResult>;

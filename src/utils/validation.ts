@@ -86,6 +86,12 @@ export function sanitizeAustralianPhone(input: string): { value: string; hadInva
   return { value, hadInvalid };
 }
 
+/** Build a `tel:` URI for Linking.openURL (digits and + only). */
+export function phoneToTelUri(phone: string): string | null {
+  const normalized = normalizeAustralianPhone(phone) || phone.trim().replace(/[^\d+]/g, '');
+  return normalized.length >= 8 ? normalized : null;
+}
+
 /** @deprecated Use {@link sanitizeAustralianPhone}. */
 export function sanitizePhone(input: string): { value: string; hadInvalid: boolean } {
   return sanitizeAustralianPhone(input);

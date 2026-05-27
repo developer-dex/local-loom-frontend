@@ -3,27 +3,43 @@ import { Platform, StyleSheet, View, type StyleProp, type ViewStyle } from 'reac
 
 export type AdaptiveBlurViewProps = Omit<BlurViewProps, 'experimentalBlurMethod' | 'intensity'> & {
   style?: StyleProp<ViewStyle>;
-  /** iOS-style intensity (1–100). Android is tuned to look similar. */
+  /** iOS-style intensity (1–100). Android is scaled to look similar. */
   intensity?: number;
+  /**
+   * When true, skips native blur on Android and uses a translucent scrim only.
+   * Defaults to true on Android — dimezisBlurView can crash on physical devices
+   * (e.g. guest detail screen login overlay) while simulators often work fine.
+   */
+  androidScrimOnly?: boolean;
 };
 
+/** Map iOS intensity to Android blur radius (accounts for blurReductionFactor). */
+function androidBlurIntensity(iosIntensity: number): number {
+  return Math.min(100, Math.max(24, Math.round(iosIntensity * 5)));
+}
+
 /**
- * Blur overlay that matches iOS on Android via expo-blur's Dimezis implementation.
- * On Android, BlurView defaults to a flat scrim unless `experimentalBlurMethod` is set.
+ * Blur overlay that matches iOS on Android via expo-blur's Dimezis BlurView.
+ * Android defaults to a flat scrim unless `experimentalBlurMethod="dimezisBlurView"` is set.
  */
 export function AdaptiveBlurView({
   intensity = 10,
   tint = 'light',
   style,
+  androidScrimOnly = Platform.OS === 'android',
   ...rest
 }: AdaptiveBlurViewProps) {
+  if (Platform.OS === 'android' && androidScrimOnly) {
+    return <BlurScrimFallback style={style} {...rest} />;
+  }
+
   if (Platform.OS === 'android') {
     return (
       <BlurView
-        intensity={intensity * 4}
+        intensity={androidBlurIntensity(intensity)}
         tint={tint}
         experimentalBlurMethod="dimezisBlurView"
-        blurReductionFactor={1}
+        blurReductionFactor={4}
         style={[styles.fill, style]}
         {...rest}
       />
@@ -43,8 +59,11 @@ export function AdaptiveBlurView({
 /**
  * Fallback when native Android blur is unavailable (very old devices / build issues).
  */
-export function BlurScrimFallback({ style }: { style?: StyleProp<ViewStyle> }) {
-  return <View style={[styles.fill, styles.scrim, style]} />;
+export function BlurScrimFallback({
+  style,
+  ...rest
+}: { style?: StyleProp<ViewStyle> } & Omit<BlurViewProps, 'intensity' | 'tint'>) {
+  return <View style={[styles.fill, styles.scrim, style]} {...rest} />;
 }
 
 const styles = StyleSheet.create({
@@ -52,6 +71,6 @@ const styles = StyleSheet.create({
     ...StyleSheet.absoluteFillObject,
   },
   scrim: {
-    backgroundColor: 'rgba(255,255,255,0.88)',
+    backgroundColor: 'rgba(255, 255, 255, 0.82)',
   },
 });
