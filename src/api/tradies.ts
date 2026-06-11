@@ -141,6 +141,8 @@ export async function setupBusinessProfileApi(req: BusinessSetupRequest): Promis
   const form = new FormData();
 
   if (req.businessName) form.append('businessName', req.businessName);
+  if (req.licenseNumber) form.append('licenseNumber', req.licenseNumber);
+  if (req.licenseExpiryDate) form.append('licenseExpiryDate', req.licenseExpiryDate);
   if (req.abn) form.append('abn', req.abn);
   if (req.categoryIds) form.append('categoryIds', req.categoryIds);
   if (req.regionIds) form.append('regionIds', req.regionIds);

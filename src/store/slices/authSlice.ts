@@ -104,8 +104,8 @@ export const signupThunk = createAsyncThunk(
   async (
     payload: {
       fullName: string;
-      phone: string;
       role: UserRole;
+      phone?: string;
       email?: string;
       profilePhotoUri?: string;
     },
@@ -235,9 +235,11 @@ const authSlice = createSlice({
       })
       .addCase(signupThunk.fulfilled, (state, action) => {
         state.status = 'succeeded';
+        const { phone, email } = action.payload;
+        const identifierType: IdentifierType = email && !phone ? 'email' : 'phone';
         state.pendingOtp = {
-          identifier: action.payload.phone,
-          identifierType: 'phone',
+          identifier: identifierType === 'email' ? (email ?? phone) : phone,
+          identifierType,
         };
       })
       .addCase(signupThunk.rejected, (state, action) => {

@@ -3,7 +3,7 @@ import { Pressable, StyleSheet, Text, View } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { AppButton, AppTextField, Icon, KeyboardFormScrollView } from '../../components/ui';
 import { colors, fontFamilies, spacing } from '../../theme';
-import { detectCredentialType, normalizeAustralianPhone, validateEmail, validatePhone } from '../../utils';
+import { detectCredentialType, normalizeCredentialInput, validateCredential } from '../../utils';
 import { useAppDispatch, useAppSelector, selectAuthStatus, selectAuthError } from '../../store/hooks';
 import { loginThunk, clearError } from '../../store/slices/authSlice';
 import type { IdentifierType } from '../../api/authTypes';
@@ -15,13 +15,6 @@ type Props = {
   /** Called after login API succeeds — navigate to OTP screen. */
   onSendOtp: (data: { identifier: string; identifierType: IdentifierType }) => void;
 };
-
-function validateCredential(value: string): string | null {
-  const type = detectCredentialType(value);
-  if (type === 'empty') return 'Phone number or email is required.';
-  if (type === 'phone') return validatePhone(value, { completeOnly: true });
-  return validateEmail(value);
-}
 
 export function SignInScreen({ onBack, onSignUp, onSendOtp }: Props) {
   const insets = useSafeAreaInsets();
@@ -86,11 +79,9 @@ export function SignInScreen({ onBack, onSignUp, onSendOtp }: Props) {
           autoCapitalize="none"
           value={credential}
           onChangeText={(raw) => {
-            const type = detectCredentialType(raw);
-            const normalised =
-              type === 'phone' ? normalizeAustralianPhone(raw) || raw.replace(/[^\d+]/g, '') : raw.toLowerCase();
-            setCredential(normalised);
-            setCredentialError(validateCredential(normalised));
+            const value = normalizeCredentialInput(raw);
+            setCredential(value);
+            setCredentialError(validateCredential(value));
           }}
           placeholder="Phone number or email address"
           error={credentialError ?? undefined}

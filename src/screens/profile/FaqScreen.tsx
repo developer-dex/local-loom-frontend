@@ -22,47 +22,47 @@ const FAQ_ITEMS: FaqItem[] = [
     number: 1,
     question: 'What is LocalLoom?',
     answer:
-      'LocalLoom is a platform that helps you find and connect with verified local tradies near you — with no commissions or hidden fees.',
+      'LocalLoom is a platform that helps you find and connect with verified local service providers near you — with no commissions or hidden fees.',
   },
   {
     id: '2',
     number: 2,
     question: 'Is LocalLoom free to use?',
     answer:
-      'Yes. Downloading the app, browsing tradies, and creating an account is free. You only pay for work you arrange directly with your tradie.',
+      'Yes. Downloading the app, browsing service providers, and creating an account is free. You only pay for work you arrange directly with your service provider.',
   },
   {
     id: '3',
     number: 3,
     question: 'Does LocalLoom take any commission?',
     answer:
-      'No. LocalLoom does not take a commission on jobs or add hidden platform fees. We focus on helping you discover and connect with local tradies.',
+      'No. LocalLoom does not take a commission on jobs or add hidden platform fees. We focus on helping you discover and connect with local service providers.',
   },
   {
     id: '4',
     number: 4,
     question: 'Do I need to create an account?',
     answer:
-      'Yes. An account lets you contact tradies, save providers you like, and leave reviews — which keeps the community trusted for everyone.',
+      'Yes. An account lets you contact service providers, save providers you like, and leave reviews — which keeps the community trusted for everyone.',
   },
   {
     id: '5',
     number: 5,
-    question: 'How do I find a tradie?',
+    question: 'How do I find a service provider?',
     answer:
-      'Browse by category from Home or Search, or search for a service. Each profile shows location, work photos, and reviews so you can compare tradies near you.',
+      'Browse by category from Home or Search, or search for a service. Each profile shows location, work photos, and reviews so you can compare service providers near you.',
   },
   {
     id: '6',
     number: 6,
-    question: 'Can I trust the tradies on LocalLoom?',
+    question: 'Can I trust the service providers on LocalLoom?',
     answer:
-      'Tradies are independent professionals. We show profiles and reviews to help you decide; you should still confirm licences, insurance, and quotes before work begins.',
+      'Service providers are independent professionals. We show profiles and reviews to help you decide; you should still confirm licences, insurance, and quotes before work begins.',
   },
   {
     id: '7',
     number: 7,
-    question: 'How do I contact a tradie?',
+    question: 'How do I contact a service provider?',
     answer:
       'Open their profile and use the in-app options to message or call where available. Keep arrangements clear and only share what you need to book the job.',
   },
@@ -71,7 +71,7 @@ const FAQ_ITEMS: FaqItem[] = [
     number: 8,
     question: 'How do reviews work?',
     answer:
-      'After a job, you can leave a star rating and short feedback. Reviews are public to help others choose quality tradies and reward great service.',
+      'After a job, you can leave a star rating and short feedback. Reviews are public to help others choose quality service providers and reward great service.',
   },
 ];
 

@@ -29,8 +29,8 @@ const BASE = '/auth';
 export async function signupApi(req: SignupRequest): Promise<SignupResponse> {
   const form = new FormData();
   form.append('fullName', req.fullName);
-  form.append('phone', req.phone);
   form.append('role', req.role);
+  if (req.phone) form.append('phone', req.phone);
   if (req.email) form.append('email', req.email);
   if (req.profilePhotoUri) {
     // React Native FormData accepts { uri, name, type } objects

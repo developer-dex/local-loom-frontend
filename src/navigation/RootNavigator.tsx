@@ -19,6 +19,7 @@ import { ChatDetailScreen } from '../screens/chat';
 import { AiSearchScreen } from '../screens/ai';
 import { getOnboardingSeen, setOnboardingSeen } from '../storage/onboardingStorage';
 import { useAuth } from '../context/AuthContext';
+import { navigationIntegration } from '../monitoring/sentry';
 
 const Stack = createNativeStackNavigator<RootStackParamList>();
 
@@ -128,7 +129,13 @@ export function RootNavigator() {
 
   return (
     <GestureHandlerRootView style={{ flex: 1, backgroundColor: colors.background }}>
-      <NavigationContainer ref={navigationRef} theme={navigationTheme}>
+      <NavigationContainer
+        ref={navigationRef}
+        theme={navigationTheme}
+        onReady={() => {
+          navigationIntegration.registerNavigationContainer(navigationRef);
+        }}
+      >
         <Stack.Navigator
           initialRouteName={initialRoute}
           screenOptions={{ headerShown: false, animation: 'slide_from_right' }}
@@ -174,11 +181,11 @@ export function RootNavigator() {
             component={function SignUp({ navigation }: NativeStackScreenProps<RootStackParamList, 'SignUp'>) {
               return (
                 <SignUpScreen
-                  onContinue={({ phone, role }) =>
+                  onContinue={({ identifier, identifierType, role }) =>
                     navigation.navigate('Otp', {
-                      identifier: phone,
-                      identifierType: 'phone',
-                      displayIdentifier: phone,
+                      identifier,
+                      identifierType,
+                      displayIdentifier: identifier,
                       signupRole: role,
                     })
                   }

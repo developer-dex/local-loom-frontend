@@ -8,7 +8,7 @@ const THINKING_LINES = [
   'Understanding what you need…',
   'Matching service category…',
   'Pinpointing your region…',
-  'Curating tradie matches…',
+  'Curating service provider matches…',
 ];
 
 const MODEL_CHIPS = [

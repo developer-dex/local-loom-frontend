@@ -66,3 +66,9 @@ export function personalInfoFromAuthUser(
 export function isTradieProfileApproved(status: string | null | undefined): boolean {
   return status === 'approved';
 }
+
+/** True while service provider application is awaiting approval (not rejected). */
+export function isTradieProfileUnderReview(status: string | null | undefined): boolean {
+  if (status === 'approved' || status === 'rejected') return false;
+  return true;
+}

@@ -118,7 +118,7 @@ export function ServiceListScreen({ navigation, route }: Props) {
           contentContainerStyle={[styles.list, { paddingBottom: tabBarSpace }]}
           showsVerticalScrollIndicator={false}
           ListEmptyComponent={
-            <Text style={styles.empty}>No tradies in this category yet.</Text>
+            <Text style={styles.empty}>No service providers in this category yet.</Text>
           }
           renderItem={({ item }) => (
             <NearYouCard

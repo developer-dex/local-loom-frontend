@@ -294,7 +294,7 @@ export function ChatsScreen() {
           </View>
           <Text style={styles.guestTitle}>Sign in to view your chats</Text>
           <Text style={styles.guestBody}>
-            Log in to message tradies and keep track of your conversations.
+            Log in to message service providers and keep track of your conversations.
           </Text>
           <AppButton
             title="Login"
@@ -371,7 +371,7 @@ export function ChatsScreen() {
                       <>
                         <Text style={styles.emptyTitle}>No chats yet</Text>
                         <Text style={styles.emptyBody}>
-                          Start a conversation with a tradie to see it here.
+                          Start a conversation with a service provider to see it here.
                         </Text>
                       </>
                     )}

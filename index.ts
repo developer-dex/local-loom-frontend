@@ -1,3 +1,7 @@
+import { initSentry, Sentry } from './src/monitoring/sentry';
+
+initSentry();
+
 import * as SplashScreen from 'expo-splash-screen';
 
 // Hold the native splash until the app calls hideAsync (see App.tsx).
@@ -11,4 +15,4 @@ import App from './App';
 // registerRootComponent calls AppRegistry.registerComponent('main', () => App);
 // It also ensures that whether you load the app in Expo Go or in a native build,
 // the environment is set up appropriately
-registerRootComponent(App);
+registerRootComponent(Sentry.wrap(App));

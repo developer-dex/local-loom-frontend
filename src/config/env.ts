@@ -20,7 +20,15 @@ const socketBaseUrl = (() => {
   return trimTrailingSlash(apiBaseUrl.replace(/\/api\/v1\/?$/i, ''));
 })();
 
+/** Sentry DSN — public; safe to embed in the client bundle. */
+const sentryDsn = process.env.EXPO_PUBLIC_SENTRY_DSN ?? '';
+
+/** When true, Sentry sends events in `__DEV__` builds (default: off). */
+const sentryEnabledInDev = process.env.EXPO_PUBLIC_SENTRY_ENABLED === 'true';
+
 export const env = {
   apiBaseUrl,
   socketBaseUrl,
+  sentryDsn,
+  sentryEnabledInDev,
 } as const;

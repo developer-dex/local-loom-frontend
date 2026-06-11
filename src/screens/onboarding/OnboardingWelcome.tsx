@@ -43,7 +43,7 @@ export function OnboardingWelcome({ width, onNext }: Props) {
       >
         <Text style={styles.title}>Welcome to LocalLoom</Text>
         <Text style={styles.body}>
-          LocalLoom helps customers find verified tradies — and helps tradies grow their business.
+          LocalLoom helps customers find verified service providers — and helps service providers grow their business.
         </Text>
         <Pressable
           onPress={onNext}

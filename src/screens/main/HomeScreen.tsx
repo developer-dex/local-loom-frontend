@@ -225,7 +225,7 @@ export function HomeScreen() {
               end={{ x: 1, y: 1 }}
               style={styles.aiChip}
             >
-              <Text style={styles.aiChipText}>✦ AI</Text>
+              <Text style={styles.aiChipText}>✦ Search with AI</Text>
             </LinearGradient>
           </Pressable>
           <Pressable hitSlop={8} accessibilityRole="button" accessibilityLabel="Notifications">
@@ -313,7 +313,7 @@ export function HomeScreen() {
               size="large"
               color={colors.primary}
               style={styles.loader}
-              accessibilityLabel="Loading tradies"
+              accessibilityLabel="Loading service providers"
             />
           ) : nearYouItems.length > 0 ? (
             <View style={styles.nearList}>
@@ -326,7 +326,7 @@ export function HomeScreen() {
               ))}
             </View>
           ) : (
-            <Text style={styles.emptyText}>No tradies available.</Text>
+            <Text style={styles.emptyText}>No service providers available.</Text>
           )}
         </View>
       </ScrollView>

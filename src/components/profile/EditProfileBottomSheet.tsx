@@ -20,10 +20,10 @@ import { KeyboardFormScrollView } from '../ui/KeyboardFormScrollView';
 import { Icon } from '../ui/Icon';
 import { colors, fontFamilies } from '../../theme';
 import {
-  AU_PHONE_DIAL_CODE,
-  AU_PHONE_E164_MAX_LENGTH,
-  sanitizeAustralianPhone,
-  validatePhone,
+  detectCredentialType,
+  normalizeAustralianPhone,
+  normalizeCredentialInput,
+  validateCredential,
 } from '../../utils/validation';
 import { useAppDispatch } from '../../store/hooks';
 import { setAuthUser } from '../../store/slices/authSlice';
@@ -32,6 +32,7 @@ import { updateUserAvatarThunk, updateUserMeThunk } from '../../store/slices/use
 export type EditProfilePayload = {
   name: string;
   phone: string;
+  email: string | null;
   profilePhotoUri: string | null;
 };
 
@@ -39,7 +40,8 @@ export type EditProfileBottomSheetProps = {
   visible: boolean;
   onClose: () => void;
   initialName: string;
-  initialPhone: string;
+  /** Phone or email — whichever the user signed up with / has on file. */
+  initialCredential: string;
   initialAvatarUri: string;
   /** When false, save only updates local state (guest). */
   isLoggedIn?: boolean;
@@ -61,7 +63,7 @@ export function EditProfileBottomSheet({
   visible,
   onClose,
   initialName,
-  initialPhone,
+  initialCredential,
   initialAvatarUri,
   isLoggedIn = false,
   onSaved,
@@ -69,19 +71,23 @@ export function EditProfileBottomSheet({
   const insets = useSafeAreaInsets();
   const dispatch = useAppDispatch();
   const [name, setName] = useState(initialName);
-  const [phone, setPhone] = useState(() => sanitizeAustralianPhone(initialPhone).value || AU_PHONE_DIAL_CODE);
-  const [phoneError, setPhoneError] = useState<string | null>(null);
+  const [credential, setCredential] = useState(initialCredential);
+  const [credentialError, setCredentialError] = useState<string | null>(null);
   const [photoUri, setPhotoUri] = useState<string>(initialAvatarUri);
   const [saving, setSaving] = useState(false);
+
+  const credentialType = detectCredentialType(credential);
+  const credentialIcon =
+    credentialType === 'email' ? 'mail-01' : 'smart-phone-02';
 
   useEffect(() => {
     if (visible) {
       setName(initialName);
-      setPhone(sanitizeAustralianPhone(initialPhone).value || AU_PHONE_DIAL_CODE);
-      setPhoneError(null);
+      setCredential(initialCredential);
+      setCredentialError(null);
       setPhotoUri(initialAvatarUri);
     }
-  }, [visible, initialName, initialPhone, initialAvatarUri]);
+  }, [visible, initialName, initialCredential, initialAvatarUri]);
 
   const launchCamera = useCallback(async () => {
     const { status } = await ImagePicker.requestCameraPermissionsAsync();
@@ -133,15 +139,22 @@ export function EditProfileBottomSheet({
 
   const onSave = useCallback(async () => {
     const trimmedName = name.trim();
-    const phoneValidation = validatePhone(phone, { completeOnly: true });
-    if (phoneValidation) {
-      setPhoneError(phoneValidation);
+    const credentialValidation = validateCredential(credential);
+    if (credentialValidation) {
+      setCredentialError(credentialValidation);
       return;
     }
-    const trimmedPhone = phone.trim();
+
+    const type = detectCredentialType(credential);
+    const updateBody =
+      type === 'phone'
+        ? { name: trimmedName, phone: normalizeAustralianPhone(credential) }
+        : { name: trimmedName, email: credential.trim() };
+
     const payload: EditProfilePayload = {
       name: trimmedName,
-      phone: trimmedPhone,
+      phone: type === 'phone' ? updateBody.phone! : '',
+      email: type === 'email' ? updateBody.email! : null,
       profilePhotoUri: photoUri.trim() || null,
     };
 
@@ -153,9 +166,7 @@ export function EditProfileBottomSheet({
 
     setSaving(true);
     try {
-      const updateResult = await dispatch(
-        updateUserMeThunk({ name: trimmedName, phone: trimmedPhone }),
-      );
+      const updateResult = await dispatch(updateUserMeThunk(updateBody));
       if (updateUserMeThunk.rejected.match(updateResult)) {
         Alert.alert('Update failed', (updateResult.payload as string) ?? 'Could not save profile.');
         return;
@@ -176,13 +187,14 @@ export function EditProfileBottomSheet({
       onSaved?.({
         name: user.name,
         phone: user.phone,
+        email: user.email,
         profilePhotoUri: user.avatar,
       });
       onClose();
     } finally {
       setSaving(false);
     }
-  }, [name, phone, photoUri, onClose, onSaved, isLoggedIn, dispatch]);
+  }, [name, credential, photoUri, onClose, onSaved, isLoggedIn, dispatch]);
 
   const inputColor = { color: colors.onboardingTitle };
   const avatarSource = photoUri ? { uri: photoUri } : require('../../../assets/signup/customer.png');
@@ -238,25 +250,20 @@ export function EditProfileBottomSheet({
                   inputStyle={inputColor}
                 />
                 <AppTextField
-                  label="Phone number"
-                  value={phone}
+                  label="Phone or Email"
+                  value={credential}
                   onChangeText={(raw) => {
-                    const { value, hadInvalid } = sanitizeAustralianPhone(raw);
-                    const next = value || AU_PHONE_DIAL_CODE;
-                    setPhone(next);
-                    const err = validatePhone(next);
-                    setPhoneError(
-                      hadInvalid
-                        ? 'Use digits only (Australian format, e.g. 0412 345 678).'
-                        : err,
-                    );
+                    const value = normalizeCredentialInput(raw);
+                    setCredential(value);
+                    setCredentialError(validateCredential(value));
                   }}
-                  placeholder="412 345 678"
-                  keyboardType="phone-pad"
-                  maxLength={AU_PHONE_E164_MAX_LENGTH}
-                  leftIconName="smart-phone-02"
+                  placeholder="Phone number or email address"
+                  keyboardType="email-address"
+                  autoCapitalize="none"
+                  autoCorrect={false}
+                  leftIconName={credentialIcon}
                   inputStyle={inputColor}
-                  error={phoneError ?? undefined}
+                  error={credentialError ?? undefined}
                 />
               </View>
 

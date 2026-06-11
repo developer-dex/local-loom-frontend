@@ -195,6 +195,8 @@ export type AbnLookupResult = {
 
 export type BusinessSetupRequest = {
   businessName: string;
+  licenseNumber?: string;
+  licenseExpiryDate?: string;
   abn?: string;
   /** Comma-separated category UUIDs. */
   categoryIds?: string;

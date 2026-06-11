@@ -30,7 +30,7 @@ export function OnboardingConnect({ width, onGetStarted, onSkip }: Props) {
         <View style={[styles.card, { paddingBottom: Math.max(insets.bottom, 12) }]}>
           <Text style={styles.title}>Connect with Trusted Local Experts</Text>
           <Text style={styles.body}>
-            LocalLoom helps customers find verified tradies and helps tradies grow their business.
+            LocalLoom helps customers find verified service providers and helps service providers grow their business.
           </Text>
           <AppButton title="Get Started" onPress={onGetStarted} />
         </View>

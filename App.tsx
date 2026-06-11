@@ -12,6 +12,7 @@ import { useManropeFonts } from './src/hooks/useManropeFonts';
 import { RootNavigator } from './src/navigation/RootNavigator';
 import { ToastProvider } from './src/components/ui';
 import { subscribeChatPersistence } from './src/api/chatPersistence';
+import { SentryUserSync } from './src/monitoring/SentryUserSync';
 
 // Keep the native splash visible until we explicitly hide it.
 // Must be called at module level (not inside a component) to take effect before
@@ -91,6 +92,7 @@ export default function App() {
 
   return (
     <ReduxProvider store={store}>
+      <SentryUserSync />
       <SafeAreaProvider>
         <ToastProvider>
           {!showMain ? (

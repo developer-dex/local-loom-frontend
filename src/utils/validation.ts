@@ -25,6 +25,23 @@ export function detectCredentialType(value: string): CredentialType {
   return 'email';
 }
 
+/** Validates a combined phone-or-email credential (sign-in / sign-up). */
+export function validateCredential(value: string): string | null {
+  const type = detectCredentialType(value);
+  if (type === 'empty') return 'Phone number or email is required.';
+  if (type === 'phone') return validatePhone(value, { completeOnly: true });
+  return validateEmail(value);
+}
+
+/** Normalise credential input while typing (phone E.164 or lowercased email). */
+export function normalizeCredentialInput(raw: string): string {
+  const type = detectCredentialType(raw);
+  if (type === 'phone') {
+    return normalizeAustralianPhone(raw) || raw.replace(/[^\d+]/g, '');
+  }
+  return sanitizeEmail(raw).value;
+}
+
 // ─── Name ─────────────────────────────────────────────────────────────────────
 
 export function isValidNameChar(ch: string): boolean {

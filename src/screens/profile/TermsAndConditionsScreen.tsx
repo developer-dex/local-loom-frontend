@@ -32,13 +32,13 @@ export function TermsAndConditionsScreen() {
       },
       {
         type: 'paragraph',
-        text: 'LocalLoom is a platform that connects customers with independent local tradies. We do not provide tradie services directly.',
+        text: 'LocalLoom is a platform that connects customers with independent local service providers. We do not provide service provider services directly.',
       },
       {
         type: 'numbered',
         number: 1,
         title: 'Introduction',
-        body: 'LocalLoom is a platform that connects customers with independent local tradies. We do not provide tradie services directly.',
+        body: 'LocalLoom is a platform that connects customers with independent local service providers. We do not provide service provider services directly.',
       },
       {
         type: 'numbered',
@@ -54,7 +54,7 @@ export function TermsAndConditionsScreen() {
         number: 3,
         title: 'Platform Role (Very Important)',
         bullets: [
-          'LocalLoom acts only as a connection platform between customers and tradies.',
+          'LocalLoom acts only as a connection platform between customers and service providers.',
           'We do not:',
           'Provide services',
           'Guarantee work quality',
@@ -71,11 +71,11 @@ export function TermsAndConditionsScreen() {
             bullets: [
               'Provide honest and accurate reviews',
               'Use the platform respectfully',
-              'Do not misuse tradie contact details',
+              'Do not misuse service provider contact details',
             ],
           },
           {
-            label: 'For Tradies:',
+            label: 'For Service Providers:',
             bullets: [
               'Provide accurate business information',
               'Maintain valid licenses (where required)',

@@ -23,5 +23,6 @@ module.exports = {
     '^react-native$': '<rootDir>/__mocks__/react-native.js',
     // Mock expo-google-fonts (they export font asset references, not needed in tests)
     '@expo-google-fonts/(.*)': '<rootDir>/__mocks__/expoGoogleFontsMock.js',
+    '@sentry/react-native': '<rootDir>/__mocks__/@sentry/react-native.js',
   },
 };

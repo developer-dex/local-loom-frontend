@@ -52,8 +52,9 @@ export type AuthTokens = {
 
 export type SignupRequest = {
   fullName: string;
-  phone: string;
   role: UserRole;
+  /** At least one of phone or email is required. */
+  phone?: string;
   email?: string;
   /** Native file URI — converted to FormData before sending. */
   profilePhotoUri?: string;

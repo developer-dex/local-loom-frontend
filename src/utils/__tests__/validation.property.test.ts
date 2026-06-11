@@ -8,7 +8,10 @@
 import * as fc from 'fast-check';
 import {
   Email_Regex,
+  validateCredential,
   validateEmail,
+  validateName,
+  validatePhone,
   sanitizeEmail,
   detectCredentialType,
 } from '../validation';
@@ -92,8 +95,6 @@ describe('Property 5: Letter-leading inputs are detected as email', () => {
 // ─── Property 7: Sign-up Continue button disabled unless all fields valid ─────
 // Validates: Requirements 4.6
 
-import { validateName, validatePhone } from '../validation';
-
 /**
  * Pure canSubmit logic extracted from SignUpScreen for direct testing.
  * Mirrors the implementation in SignUpScreen.tsx exactly.
@@ -101,13 +102,19 @@ import { validateName, validatePhone } from '../validation';
 function canSubmitLogic(
   role: string | null,
   fullName: string,
+  credential: string,
   email: string,
   phone: string,
+  photoUri: string | null,
 ): boolean {
-  if (!role) return false;
-  if (!fullName.trim() || !email.trim() || !phone.trim()) return false;
-  if (validateName(fullName) || validateEmail(email) || validatePhone(phone, { completeOnly: true }))
-    return false;
+  if (!role || validateName(fullName)) return false;
+  if (role === 'customer') {
+    if (!credential.trim() || validateCredential(credential)) return false;
+    return true;
+  }
+  if (!email.trim() || validateEmail(email)) return false;
+  if (!phone.trim() || validatePhone(phone, { completeOnly: true })) return false;
+  if (!photoUri) return false;
   return true;
 }
 
@@ -116,10 +123,9 @@ describe('Property 7: Sign-up Continue button disabled unless all fields valid',
     fc.assert(
       fc.property(
         fc.string({ minLength: 2 }),
-        fc.emailAddress(),
-        fc.stringMatching(/^\+614\d{8}$/),
-        (fullName, email, phone) => {
-          return canSubmitLogic(null, fullName, email, phone) === false;
+        fc.oneof(fc.emailAddress(), fc.stringMatching(/^\+614\d{8}$/)),
+        (fullName, credential) => {
+          return canSubmitLogic(null, fullName, credential, '', '', null) === false;
         },
       ),
       { numRuns: 200 },
@@ -130,56 +136,73 @@ describe('Property 7: Sign-up Continue button disabled unless all fields valid',
     fc.assert(
       fc.property(
         fc.constantFrom('tradie', 'customer'),
-        fc.stringMatching(/^\s*$/), // empty or whitespace-only
-        fc.emailAddress(),
-        fc.stringMatching(/^\+614\d{8}$/),
-        (role, fullName, email, phone) => {
-          return canSubmitLogic(role, fullName, email, phone) === false;
+        fc.stringMatching(/^\s*$/),
+        fc.oneof(fc.emailAddress(), fc.stringMatching(/^\+614\d{8}$/)),
+        (role, fullName, credential) => {
+          return canSubmitLogic(role, fullName, credential, '', '', null) === false;
         },
       ),
       { numRuns: 200 },
     );
   });
 
-  it('returns false when email is empty or whitespace-only', () => {
+  it('returns false when credential is empty or whitespace-only', () => {
     fc.assert(
       fc.property(
-        fc.constantFrom('tradie', 'customer'),
+        fc.constant('customer'),
         fc.string({ minLength: 2 }).filter((s) => s.trim().length >= 2),
-        fc.stringMatching(/^\s*$/), // empty or whitespace-only
-        fc.stringMatching(/^\+614\d{8}$/),
-        (role, fullName, email, phone) => {
-          return canSubmitLogic(role, fullName, email, phone) === false;
+        fc.stringMatching(/^\s*$/),
+        (role, fullName, credential) => {
+          return canSubmitLogic(role, fullName, credential, '', '', null) === false;
         },
       ),
       { numRuns: 200 },
     );
   });
 
-  it('returns false when email is invalid (non-empty but fails Email_Regex)', () => {
+  it('returns false when credential is invalid', () => {
     fc.assert(
       fc.property(
-        fc.constantFrom('tradie', 'customer'),
+        fc.constant('customer'),
         fc.string({ minLength: 2 }).filter((s) => s.trim().length >= 2),
-        fc.string({ minLength: 1 }).filter((s) => !Email_Regex.test(s) && s.trim().length > 0),
-        fc.stringMatching(/^\+614\d{8}$/),
-        (role, fullName, email, phone) => {
-          return canSubmitLogic(role, fullName, email, phone) === false;
+        fc
+          .string({ minLength: 1 })
+          .filter(
+            (s) =>
+              s.trim().length > 0 &&
+              validateCredential(s) !== null &&
+              !s.trim().match(/^[\d+]/),
+          ),
+        (role, fullName, credential) => {
+          return canSubmitLogic(role, fullName, credential, '', '', null) === false;
         },
       ),
       { numRuns: 200 },
     );
   });
 
-  it('returns false when phone is empty or too short', () => {
+  it('returns false when phone credential is incomplete', () => {
     fc.assert(
       fc.property(
-        fc.constantFrom('tradie', 'customer'),
+        fc.constant('customer'),
         fc.string({ minLength: 2 }).filter((s) => s.trim().length >= 2),
-        fc.emailAddress(),
         fc.oneof(fc.constant(''), fc.constant('+61'), fc.stringMatching(/^\+61\d{1,7}$/)),
-        (role, fullName, email, phone) => {
-          return canSubmitLogic(role, fullName, email, phone) === false;
+        (role, fullName, credential) => {
+          return canSubmitLogic(role, fullName, credential, '', '', null) === false;
+        },
+      ),
+      { numRuns: 200 },
+    );
+  });
+
+  it('returns false when role is tradie and profile photo is missing', () => {
+    fc.assert(
+      fc.property(
+        fc.string({ minLength: 2 }).filter((s) => s.trim().length >= 2),
+        fc.emailAddress(),
+        fc.stringMatching(/^\+614\d{8}$/),
+        (fullName, email, phone) => {
+          return canSubmitLogic('tradie', fullName, '', email, phone, null) === false;
         },
       ),
       { numRuns: 200 },
@@ -189,13 +212,27 @@ describe('Property 7: Sign-up Continue button disabled unless all fields valid',
   it('returns true only when all fields are valid', () => {
     fc.assert(
       fc.property(
-        fc.constantFrom('tradie', 'customer'),
-        // Valid name: at least 2 non-whitespace chars, only letters/spaces/hyphens/apostrophes
+        fc.constant('customer'),
+        fc.stringMatching(/^[A-Za-z][A-Za-z ]{1,}$/).filter((s) => s.trim().length >= 2),
+        fc
+          .oneof(fc.emailAddress(), fc.stringMatching(/^\+614\d{8}$/))
+          .filter((credential) => validateCredential(credential) === null),
+        (role, fullName, credential) => {
+          return canSubmitLogic(role, fullName, credential, '', '', null) === true;
+        },
+      ),
+      { numRuns: 200 },
+    );
+  });
+
+  it('returns true for tradie when email, phone, and photo are valid', () => {
+    fc.assert(
+      fc.property(
         fc.stringMatching(/^[A-Za-z][A-Za-z ]{1,}$/).filter((s) => s.trim().length >= 2),
         fc.emailAddress(),
         fc.stringMatching(/^\+614\d{8}$/),
-        (role, fullName, email, phone) => {
-          return canSubmitLogic(role, fullName, email, phone) === true;
+        (fullName, email, phone) => {
+          return canSubmitLogic('tradie', fullName, '', email, phone, 'file:///profile.jpg') === true;
         },
       ),
       { numRuns: 200 },

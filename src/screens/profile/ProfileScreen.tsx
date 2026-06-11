@@ -29,12 +29,13 @@ import { fetchProfileThunk } from '../../store/slices/authSlice';
 import { fetchMyTradieProfileThunk, fetchTradieStatsThunk } from '../../store/slices/tradiesSlice';
 import { deleteUserMeThunk } from '../../store/slices/usersSlice';
 import { resolveMediaUrl } from '../../utils/mediaUrl';
-import { isTradieProfileApproved } from '../../utils/authUser';
+import { isTradieProfileApproved, isTradieProfileUnderReview } from '../../utils/authUser';
 import { profileStatusLabel } from '../../utils/tradieProfileDraft';
 import { colors, fontFamilies, nunitoSans } from '../../theme';
 
 const TRADIE_BADGE: ImageSourcePropType = require('../../../assets/signup/tradie.png');
 const DEFAULT_AVATAR = require('../../../assets/signup/customer.png');
+const AU_LOGO = require('../../../assets/signup/au_logo.png');
 
 type MenuItem = {
   key: string;
@@ -64,6 +65,8 @@ export function ProfileScreen() {
   const isTradie = authUser?.isTradie === true;
   const tradieProfileStatus = authUser?.tradieProfileStatus ?? null;
   const tradieApproved = isTradieProfileApproved(tradieProfileStatus);
+  const isProfileUnderReview =
+    isLoggedIn && isTradie && isTradieProfileUnderReview(tradieProfileStatus);
 
   const [editProfileOpen, setEditProfileOpen] = useState(false);
   const [guestName, setGuestName] = useState('');
@@ -71,7 +74,8 @@ export function ProfileScreen() {
   const [guestAvatarUri, setGuestAvatarUri] = useState<string | null>(null);
 
   const displayName = authUser?.name ?? (guestName || 'Guest');
-  const displayPhone = authUser?.phone ?? guestPhone;
+  const displayCredential =
+    authUser?.phone?.trim() || authUser?.email?.trim() || guestPhone || '';
   const displayAvatar = useMemo(() => {
     const raw = authUser?.avatar ?? guestAvatarUri;
     if (!raw) return null;
@@ -171,6 +175,14 @@ export function ProfileScreen() {
     getRootNav()?.navigate('BecomeTradie', { mode: 'create' });
   }, [getRootNav, isLoggedIn, openSignIn]);
 
+  const openEditProfile = useCallback(() => {
+    if (!isLoggedIn) {
+      openSignIn();
+      return;
+    }
+    setEditProfileOpen(true);
+  }, [isLoggedIn, openSignIn]);
+
   const formatRating = (value: number | undefined) =>
     value != null && Number.isFinite(value) ? value.toFixed(1) : '—';
 
@@ -189,7 +201,19 @@ export function ProfileScreen() {
           <View style={styles.heroCard}>
             <View style={styles.heroTop}>
               <View style={styles.identity}>
-                <View style={styles.avatarWrap}>
+                <Pressable
+                  onPress={openEditProfile}
+                  accessibilityRole="button"
+                  accessibilityLabel={
+                    isProfileUnderReview ? 'Edit profile photo' : 'Edit profile'
+                  }
+                  accessibilityHint={
+                    isProfileUnderReview
+                      ? 'Opens profile editor to update your photo and details'
+                      : undefined
+                  }
+                  style={({ pressed }) => [styles.avatarWrap, pressed && styles.pressed]}
+                >
                   <RemoteImage
                     uri={displayAvatar}
                     fallback={DEFAULT_AVATAR}
@@ -198,7 +222,12 @@ export function ProfileScreen() {
                     resizeMode="cover"
                     accessibilityLabel="Profile photo"
                   />
-                </View>
+                  {isProfileUnderReview ? (
+                    <View style={styles.avatarEditBadge}>
+                      <Icon name="icn_edit-02" width={12} height={12} color={colors.onPrimary} />
+                    </View>
+                  ) : null}
+                </Pressable>
                 <View style={styles.identityText}>
                   <Text style={styles.displayName} numberOfLines={1}>
                     {displayName}
@@ -208,9 +237,9 @@ export function ProfileScreen() {
                       {businessName}
                     </Text>
                   ) : null} */}
-                  {displayPhone ? (
+                  {displayCredential ? (
                     <Text style={styles.phone} numberOfLines={1}>
-                      {displayPhone}
+                      {displayCredential}
                     </Text>
                   ) : null}
                   {profileStatus ? (
@@ -223,16 +252,21 @@ export function ProfileScreen() {
                 hitSlop={8}
                 accessibilityRole="button"
                 accessibilityLabel="Edit profile"
-                style={({ pressed }) => [styles.editBtn, pressed && styles.pressed]}
-                onPress={() => {
-                  if (!isLoggedIn) {
-                    openSignIn();
-                    return;
-                  }
-                  setEditProfileOpen(true);
-                }}
+                accessibilityState={{ disabled: isProfileUnderReview }}
+                disabled={isProfileUnderReview}
+                style={({ pressed }) => [
+                  styles.editBtn,
+                  isProfileUnderReview && styles.editBtnDisabled,
+                  pressed && !isProfileUnderReview && styles.pressed,
+                ]}
+                onPress={openEditProfile}
               >
-                <Icon name="icn_edit-02" width={18} height={18} color={colors.onboardingTitle} />
+                <Icon
+                  name="icn_edit-02"
+                  width={18}
+                  height={18}
+                  color={isProfileUnderReview ? colors.placeholderText : colors.onboardingTitle}
+                />
               </Pressable>
             </View>
 
@@ -258,13 +292,13 @@ export function ProfileScreen() {
             <View style={styles.heroDivider} />
             <Pressable
               accessibilityRole="button"
-              accessibilityLabel={isTradie ? 'Manage Tradie' : 'Become a Tradie'}
+              accessibilityLabel={isTradie ? 'Manage Service Provider' : 'Become a Service Provider'}
               onPress={isTradie ? onManageTradie : onBecomeTradie}
               style={({ pressed }) => [styles.tradieRow, pressed && styles.pressed]}
             >
               <Image source={TRADIE_BADGE} style={styles.tradieBadge} resizeMode="cover" />
               <Text style={styles.tradieLabel} numberOfLines={1}>
-                {isTradie ? 'Manage Tradie' : 'Become a Tradie'}
+                {isTradie ? 'Manage Service Provider' : 'Become a Service Provider'}
               </Text>
               <Icon name="arrow-right-01" width={18} height={18} color={colors.primary} />
             </Pressable>
@@ -301,6 +335,14 @@ export function ProfileScreen() {
             <Text style={styles.logoutLabel}>{isLoggedIn ? 'Logout' : 'Sign in'}</Text>
           </Pressable>
         </View>
+        <View style={styles.section}>
+          <Image
+            source={AU_LOGO}
+            style={styles.auLogo}
+            resizeMode="contain"
+            accessibilityLabel="Proudly Australian owned and operated"
+          />
+        </View>
       </ScrollView>
 
       <EditProfileBottomSheet
@@ -308,12 +350,12 @@ export function ProfileScreen() {
         onClose={() => setEditProfileOpen(false)}
         isLoggedIn={isLoggedIn}
         initialName={displayName}
-        initialPhone={displayPhone ?? ''}
+        initialCredential={displayCredential}
         initialAvatarUri={displayAvatar ?? ''}
-        onSaved={({ name, phone, profilePhotoUri }) => {
+        onSaved={({ name, phone, email, profilePhotoUri }) => {
           if (!isLoggedIn) {
             setGuestName(name);
-            setGuestPhone(phone);
+            setGuestPhone(phone || email || '');
             setGuestAvatarUri(profilePhotoUri);
           }
         }}
@@ -372,6 +414,20 @@ const styles = StyleSheet.create({
     borderColor: '#E6E6E6',
     overflow: 'hidden',
     backgroundColor: colors.surface,
+    position: 'relative',
+  },
+  avatarEditBadge: {
+    position: 'absolute',
+    right: 0,
+    bottom: 0,
+    width: 22,
+    height: 22,
+    borderRadius: 11,
+    backgroundColor: colors.primary,
+    alignItems: 'center',
+    justifyContent: 'center',
+    borderWidth: 2,
+    borderColor: '#FFF0EF',
   },
   avatar: {
     width: '100%',
@@ -444,6 +500,9 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     justifyContent: 'center',
   },
+  editBtnDisabled: {
+    opacity: 0.4,
+  },
   heroDivider: {
     height: 1,
     backgroundColor: '#F1D9D6',
@@ -508,6 +567,12 @@ const styles = StyleSheet.create({
     fontSize: 14,
     lineHeight: 18,
     color: colors.onboardingTitle,
+  },
+  auLogo: {
+    width: 220,
+    height: 100,
+    // backgroundColor:"red",
+    // alignSelf: 'flex-start',
   },
   pressed: {
     opacity: 0.7,

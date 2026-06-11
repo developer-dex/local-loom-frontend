@@ -29,6 +29,7 @@ import { colors, fontFamilies } from '../../theme';
 import {
   AU_PHONE_E164_MAX_LENGTH,
   AU_PHONE_DIAL_CODE,
+  normalizeAustralianPhone,
   sanitizeAustralianPhone,
   sanitizeName,
   validateName,
@@ -59,12 +60,14 @@ import {
 } from '../../store/hooks';
 import { fetchCategoriesThunk } from '../../store/slices/categoriesSlice';
 import { fetchRegionsThunk } from '../../store/slices/regionsSlice';
-import { fetchProfileThunk } from '../../store/slices/authSlice';
+import { fetchProfileThunk, setAuthUser } from '../../store/slices/authSlice';
+import { updateUserMeThunk } from '../../store/slices/usersSlice';
 import {
   deleteWorkPhotoThunk,
   setupBusinessProfileThunk,
   uploadWorkPhotosThunk,
 } from '../../store/slices/tradiesSlice';
+import { computeProfileCompletionPercent } from '../../utils/profileCompletionScore';
 import {
   hasPendingWorkPhotoChanges,
   isLocalMediaUri,
@@ -116,6 +119,46 @@ function validateEmail(value: string): string | null {
   const v = value.trim();
   if (!v) return 'Email is required.';
   if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(v)) return 'Enter a valid email address.';
+  return null;
+}
+
+function formatLicenseExpiryForDisplay(iso: string | null | undefined): string {
+  if (!iso) return '';
+  const match = /^(\d{4})-(\d{2})-(\d{2})/.exec(iso.trim());
+  if (!match) return iso;
+  return `${match[3]}/${match[2]}/${match[1]}`;
+}
+
+function parseLicenseExpiryInput(value: string): string | null {
+  const trimmed = value.trim();
+  const ddmmyyyy = /^(\d{2})\/(\d{2})\/(\d{4})$/.exec(trimmed);
+  if (ddmmyyyy) {
+    return `${ddmmyyyy[3]}-${ddmmyyyy[2]}-${ddmmyyyy[1]}`;
+  }
+  if (/^\d{4}-\d{2}-\d{2}$/.test(trimmed)) return trimmed;
+  return null;
+}
+
+function validateLicenseExpiry(value: string): string | null {
+  if (!value.trim()) return 'Licence expiry date is required.';
+  const iso = parseLicenseExpiryInput(value);
+  if (!iso) return 'Enter a valid date (DD/MM/YYYY).';
+  const [year, month, day] = iso.split('-').map(Number);
+  const date = new Date(year, month - 1, day);
+  if (
+    date.getFullYear() !== year ||
+    date.getMonth() !== month - 1 ||
+    date.getDate() !== day
+  ) {
+    return 'Enter a valid date (DD/MM/YYYY).';
+  }
+  return null;
+}
+
+function validateLicenseNumber(value: string): string | null {
+  const v = value.trim();
+  if (!v) return 'Licence number is required.';
+  if (v.length < 3) return 'Licence number is too short.';
   return null;
 }
 
@@ -386,6 +429,10 @@ export function BecomeTradieScreen() {
     initial?.abn && initial?.abnData ? initial.abn : null,
   );
   const [businessName, setBusinessName] = useState(initial?.businessName ?? '');
+  const [licenseNumber, setLicenseNumber] = useState(initial?.licenseNumber ?? '');
+  const [licenseExpiryDate, setLicenseExpiryDate] = useState(
+    formatLicenseExpiryForDisplay(initial?.licenseExpiryDate),
+  );
   const [selectedServiceIds, setSelectedServiceIds] = useState<string[]>(initial?.selectedServiceIds ?? []);
   const [servicesPickerOpen, setServicesPickerOpen] = useState(false);
   const [videoUri, setVideoUri] = useState<{ uri: string; name: string } | null>(initial?.videoUri ?? null);
@@ -421,11 +468,14 @@ export function BecomeTradieScreen() {
   /** Local file URIs the user added from camera/gallery this session. */
   const addedLocalWorkUrisRef = useRef<Set<string>>(new Set());
 
+  const [photoError, setPhotoError] = useState<string | null>(null);
   const [nameError, setNameError] = useState<string | null>(null);
   const [emailError, setEmailError] = useState<string | null>(null);
   const [phoneError, setPhoneError] = useState<string | null>(null);
   const [documentsError, setDocumentsError] = useState<string | null>(null);
   const [businessNameError, setBusinessNameError] = useState<string | null>(null);
+  const [licenseNumberError, setLicenseNumberError] = useState<string | null>(null);
+  const [licenseExpiryError, setLicenseExpiryError] = useState<string | null>(null);
   const [servicesError, setServicesError] = useState<string | null>(null);
   const [locationError, setLocationError] = useState<string | null>(null);
   const [serviceDescriptionError, setServiceDescriptionError] = useState<string | null>(null);
@@ -436,6 +486,59 @@ export function BecomeTradieScreen() {
   const [workImagesError, setWorkImagesError] = useState<string | null>(null);
 
   const inputColor = useMemo(() => ({ color: colors.onboardingTitle }), []);
+
+  const knownCategoryIds = useMemo(
+    () => new Set(categories.map((c) => c.id)),
+    [categories],
+  );
+
+  const profileCompletionPercent = useMemo(
+    () =>
+      computeProfileCompletionPercent({
+        photoUri,
+        name,
+        phone,
+        email,
+        businessName,
+        licenseNumber,
+        licenseExpiryDate,
+        abn,
+        abnLookupLoading,
+        abnLookupResult,
+        verifiedAbn,
+        selectedServiceIds,
+        knownCategoryIds,
+        selectedRegionId,
+        serviceDescription,
+        openTime,
+        closeTime,
+        openDayIds,
+        emergencyAvailable,
+        workImageCount: workImages.length,
+      }),
+    [
+      photoUri,
+      name,
+      phone,
+      email,
+      businessName,
+      licenseNumber,
+      licenseExpiryDate,
+      abn,
+      abnLookupLoading,
+      abnLookupResult,
+      verifiedAbn,
+      selectedServiceIds,
+      knownCategoryIds,
+      selectedRegionId,
+      serviceDescription,
+      openTime,
+      closeTime,
+      openDayIds,
+      emergencyAvailable,
+      workImages.length,
+    ],
+  );
 
   const onAbnChange = useCallback((raw: string) => {
     const digits = raw.replace(/\D/g, '').slice(0, 11);
@@ -515,6 +618,7 @@ export function BecomeTradieScreen() {
       });
       if (!result.canceled && result.assets?.[0]?.uri) {
         setPhotoUri(result.assets[0].uri);
+        setPhotoError(null);
       }
     } catch (e) {
       Alert.alert('Could not open photos', 'Something went wrong. Please try again.');
@@ -703,11 +807,13 @@ export function BecomeTradieScreen() {
     const ne = validateName(name);
     const pe = validatePhone(phone, { completeOnly: true });
     const ee = validateEmail(email);
+    // const photoErr = !photoUri ? 'Profile photo is required.' : null;
     setNameError(ne);
     setPhoneError(pe);
     setEmailError(ee);
-    return !ne && !pe && !ee;
-  }, [name, phone, email]);
+    // setPhotoError(photoErr);
+    return !ne && !pe && !ee; // && !photoErr
+  }, [name, phone, email, photoUri]);
 
   const validateStep1 = useCallback((): boolean => {
     const allUploaded = DOC_FIELDS.every((f) => documents[f.key] !== null);
@@ -729,6 +835,8 @@ export function BecomeTradieScreen() {
             ? 'Please enter a valid ABN and wait for verification.'
             : null;
     const nextBusinessNameError = !businessName.trim() ? 'Business name is required.' : null;
+    const nextLicenseNumberError = validateLicenseNumber(licenseNumber);
+    const nextLicenseExpiryError = validateLicenseExpiry(licenseExpiryDate);
     const validCategoryIds = filterUuids(
       selectedServiceIds.filter((id) => categoryNameById.has(id)),
     );
@@ -750,6 +858,8 @@ export function BecomeTradieScreen() {
 
     setAbnError(nextAbnError);
     setBusinessNameError(nextBusinessNameError);
+    setLicenseNumberError(nextLicenseNumberError);
+    setLicenseExpiryError(nextLicenseExpiryError);
     setServicesError(nextServicesError);
     setLocationError(nextLocationError);
     setServiceDescriptionError(nextServiceDescriptionError);
@@ -761,6 +871,8 @@ export function BecomeTradieScreen() {
     return !(
       nextAbnError ||
       nextBusinessNameError ||
+      nextLicenseNumberError ||
+      nextLicenseExpiryError ||
       nextServicesError ||
       nextLocationError ||
       nextServiceDescriptionError ||
@@ -775,6 +887,8 @@ export function BecomeTradieScreen() {
     abnLookupResult,
     verifiedAbn,
     businessName,
+    licenseNumber,
+    licenseExpiryDate,
     selectedServiceIds,
     selectedRegionId,
     categoryNameById,
@@ -795,6 +909,8 @@ export function BecomeTradieScreen() {
       abn,
       abnData: abnLookupResult,
       businessName: businessName.trim(),
+      licenseNumber: licenseNumber.trim(),
+      licenseExpiryDate: parseLicenseExpiryInput(licenseExpiryDate),
       selectedServiceIds,
       videoUri,
       selectedRegionId,
@@ -816,6 +932,8 @@ export function BecomeTradieScreen() {
     abn,
     abnLookupResult,
     businessName,
+    licenseNumber,
+    licenseExpiryDate,
     selectedServiceIds,
     videoUri,
     selectedRegionId,
@@ -847,6 +965,8 @@ export function BecomeTradieScreen() {
     const result = await dispatch(
       setupBusinessProfileThunk({
         businessName: draft.businessName.trim(),
+        licenseNumber: draft.licenseNumber.trim(),
+        licenseExpiryDate: draft.licenseExpiryDate ?? undefined,
         abn: draft.abn.trim(),
         abnData: abnResultToApiJson(draft.abnData!),
         categoryIds,
@@ -958,10 +1078,35 @@ export function BecomeTradieScreen() {
     return false;
   }, [workImages, dispatch, showToast, mode]);
 
+  const submitPersonalInfo = useCallback(async (): Promise<boolean> => {
+    const result = await dispatch(
+      updateUserMeThunk({
+        name: name.trim(),
+        email: email.trim(),
+        phone: normalizeAustralianPhone(phone),
+      }),
+    );
+    if (updateUserMeThunk.rejected.match(result)) {
+      const msg = (result.payload as string) ?? 'Failed to update profile.';
+      showToast({ message: msg, type: 'error', duration: 5_000 });
+      return false;
+    }
+    dispatch(setAuthUser(result.payload));
+    return true;
+  }, [dispatch, name, email, phone, showToast]);
+
   const onPrimaryPress = useCallback(() => {
     if (step === 0) {
       if (!validateStep0()) return;
-      setStep(1);
+      setSubmitting(true);
+      void (async () => {
+        try {
+          const ok = await submitPersonalInfo();
+          if (ok) setStep(1);
+        } finally {
+          setSubmitting(false);
+        }
+      })();
       return;
     }
     if (step === 1) {
@@ -1002,6 +1147,7 @@ export function BecomeTradieScreen() {
     })();
   }, [
     step,
+    submitPersonalInfo,
     validateStep0,
     validateStep2,
     validateStep4,
@@ -1023,9 +1169,10 @@ export function BecomeTradieScreen() {
 
   const primaryLabel = useMemo(() => {
     if (submitting) {
-      return step === 1 ? 'Saving...' : 'Submitting...';
+      if (step === 0 || step === 1) return 'Saving...';
+      return 'Submitting...';
     }
-    return step === STEPS - 1 ? 'Submit for Review' : 'Continue';
+    return step === STEPS - 1 ? 'Submit Images' : 'Continue';
   }, [step, submitting]);
 
   const handleDescriptionFocus = useKeyboardFormScrollOnFocus();
@@ -1047,7 +1194,7 @@ export function BecomeTradieScreen() {
           >
             <Icon name="arrow-left-01" width={24} height={24} color={colors.onboardingTitle} />
           </Pressable>
-          <Text style={styles.topTitle}>Become a Tradies</Text>
+          <Text style={styles.topTitle}>Become a Service Provider</Text>
           <View style={styles.backBtn} />
         </View>
 
@@ -1081,6 +1228,8 @@ export function BecomeTradieScreen() {
           })}
         </View>
 
+        <ProfileCompletionScore percent={profileCompletionPercent} />
+
         <KeyboardFormScrollView
           keyboardAvoiding={false}
           style={styles.scroll}
@@ -1090,6 +1239,7 @@ export function BecomeTradieScreen() {
 
           {step === 0 ? (
             <View style={styles.block}>
+              {/* Profile photo picker — hidden on step 0 for now
               <View style={styles.uploadWrap}>
                 <Pressable
                   onPress={onPickPhoto}
@@ -1106,8 +1256,10 @@ export function BecomeTradieScreen() {
                     <Icon name="pencil-edit-02" width={14} height={14} color={colors.onPrimary} />
                   </View>
                 </Pressable>
-                <Text style={styles.uploadLabel}>Upload Your Photo</Text>
+                <Text style={styles.uploadLabel}>Upload Your Photo (required)</Text>
+                <FieldError message={photoError} />
               </View>
+              */}
 
               <View style={styles.fields}>
                 <AppTextField
@@ -1178,6 +1330,35 @@ export function BecomeTradieScreen() {
                 inputStyle={inputColor}
               />
 
+              <AppTextField
+                label="Licence Number"
+                value={licenseNumber}
+                onChangeText={(t) => {
+                  setLicenseNumber(t);
+                  setLicenseNumberError(validateLicenseNumber(t));
+                }}
+                placeholder="Enter licence number"
+                autoCapitalize="characters"
+                autoCorrect={false}
+                leftIconName="transaction-history"
+                error={licenseNumberError ?? undefined}
+                inputStyle={inputColor}
+              />
+
+              <AppTextField
+                label="Licence Expiry Date"
+                value={licenseExpiryDate}
+                onChangeText={(t) => {
+                  setLicenseExpiryDate(t);
+                  setLicenseExpiryError(validateLicenseExpiry(t));
+                }}
+                placeholder="DD/MM/YYYY"
+                keyboardType="numbers-and-punctuation"
+                leftIconName="time-04"
+                error={licenseExpiryError ?? undefined}
+                inputStyle={inputColor}
+              />
+
               <AbnNumberField
                 value={abn}
                 onChangeText={onAbnChange}
@@ -1243,8 +1424,8 @@ export function BecomeTradieScreen() {
               </View>
 
               <DocumentUploadField
-                label="Video"
-                placeholder="Upload Video"
+                label="Your Video Profile"
+                placeholder="Upload Video Profile"
                 fileName={videoUri?.name ?? null}
                 onPress={onPickVideo}
               />
@@ -1659,6 +1840,29 @@ function TogglePill({
 
 const STEP_CIRCLE_SIZE = 28;
 
+function ProfileCompletionScore({ percent }: { percent: number }) {
+
+  return (
+    <View
+      style={styles.profileScoreSection}
+      accessibilityRole="progressbar"
+      accessibilityLabel={`Profile ${percent} percent complete`}
+      accessibilityValue={{ min: 0, max: 100, now: percent }}
+    >
+      <View style={styles.profileScoreCard}>
+        <View style={styles.profileScoreHeader}>
+          <Text style={styles.profileScoreLabel}>Profile score</Text>
+          <Text style={styles.profileScorePercent}>{percent}%</Text>
+        </View>
+        <View style={styles.profileScoreTrack}>
+          <View style={[styles.profileScoreFill, { width: `${percent}%` }]} />
+        </View>
+        <Text style={styles.profileScoreCaption}>{percent}% profile complete</Text>
+      </View>
+    </View>
+  );
+}
+
 const styles = StyleSheet.create({
   flex: {
     flex: 1,
@@ -1693,11 +1897,55 @@ const styles = StyleSheet.create({
   stepperRow: {
     flexDirection: 'row',
     alignItems: 'center',
-    paddingHorizontal:50,
+    paddingHorizontal: 50,
     marginTop: 8,
-    marginBottom: 24,
-    // backgroundColor: colors.placeholderText,
+    marginBottom: 12,
     justifyContent: 'space-between',
+  },
+  profileScoreSection: {
+    paddingHorizontal: 20,
+    marginBottom: 16,
+  },
+  profileScoreCard: {
+    backgroundColor: '#FFF0EF',
+    borderRadius: 12,
+    paddingHorizontal: 14,
+    paddingVertical: 12,
+    gap: 8,
+  },
+  profileScoreHeader: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+  },
+  profileScoreLabel: {
+    fontFamily: fontFamilies.inter.medium,
+    fontSize: 13,
+    lineHeight: 18,
+    color: colors.onboardingBody,
+  },
+  profileScorePercent: {
+    fontFamily: fontFamilies.inter.semibold,
+    fontSize: 13,
+    lineHeight: 18,
+    color: colors.primary,
+  },
+  profileScoreTrack: {
+    height: 6,
+    borderRadius: 20,
+    backgroundColor: '#E8E8EE',
+    overflow: 'hidden',
+  },
+  profileScoreFill: {
+    height: '100%',
+    borderRadius: 20,
+    backgroundColor: colors.primary,
+  },
+  profileScoreCaption: {
+    fontFamily: fontFamilies.inter.regular,
+    fontSize: 12,
+    lineHeight: 16,
+    color: colors.placeholderText,
   },
   stepperItem: {
     flexDirection: 'row',

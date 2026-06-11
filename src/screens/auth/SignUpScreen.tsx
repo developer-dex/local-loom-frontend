@@ -2,14 +2,16 @@ import { useEffect, useMemo, useState } from 'react';
 import { Image, Pressable, StyleSheet, Text, View } from 'react-native';
 import * as ImagePicker from 'expo-image-picker';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
+import type { IdentifierType } from '../../api/authTypes';
 import { AppButton, AppTextField, Icon, KeyboardFormScrollView } from '../../components/ui';
 import { colors, fontFamilies, nunitoSans, spacing } from '../../theme';
 import {
-  AU_PHONE_E164_MAX_LENGTH,
-  AU_PHONE_DIAL_CODE,
-  sanitizeAustralianPhone,
+  detectCredentialType,
+  normalizeAustralianPhone,
+  normalizeCredentialInput,
   sanitizeEmail,
   sanitizeName,
+  validateCredential,
   validateEmail,
   validateName,
   validatePhone,
@@ -24,7 +26,12 @@ const customerArt = require('../../../assets/signup/customer.png');
 type Role = 'tradie' | 'customer';
 
 type Props = {
-  onContinue: (data: { role: Role; fullName: string; email: string; phone: string }) => void;
+  onContinue: (data: {
+    role: Role;
+    fullName: string;
+    identifier: string;
+    identifierType: IdentifierType;
+  }) => void;
   onBack: () => void;
   onSignIn: () => void;
   onSkipToHome: () => void;
@@ -37,15 +44,19 @@ export function SignUpScreen({ onContinue, onBack, onSignIn, onSkipToHome }: Pro
   const apiError = useAppSelector(selectAuthError);
 
   const [role, setRole] = useState<Role | null>(null);
-  const [mobile, setMobile] = useState(AU_PHONE_DIAL_CODE);
-  const [fullName, setFullName] = useState('');
+  const [credential, setCredential] = useState('');
   const [email, setEmail] = useState('');
+  const [phone, setPhone] = useState('');
+  const [fullName, setFullName] = useState('');
   const [photoUri, setPhotoUri] = useState<string | null>(null);
+  const [photoError, setPhotoError] = useState<string | null>(null);
   const [nameError, setNameError] = useState<string | null>(null);
+  const [credentialError, setCredentialError] = useState<string | null>(null);
   const [emailError, setEmailError] = useState<string | null>(null);
   const [phoneError, setPhoneError] = useState<string | null>(null);
 
   const submitting = apiStatus === 'loading';
+  const credentialType = detectCredentialType(credential);
 
   useEffect(() => () => { dispatch(clearError()); }, [dispatch]);
 
@@ -68,40 +79,81 @@ export function SignUpScreen({ onContinue, onBack, onSignIn, onSkipToHome }: Pro
     });
     if (!result.canceled && result.assets.length > 0) {
       setPhotoUri(result.assets[0].uri);
+      setPhotoError(null);
     }
   };
 
+  const avatarHint = useMemo(() => {
+    if (photoUri) return 'Tap to change photo';
+    if (role === 'tradie') return 'Add profile photo (required)';
+    return 'Add profile photo (optional)';
+  }, [photoUri, role]);
+
   const canSubmit = useMemo(() => {
-    if (!role) return false;
-    if (!fullName.trim() || !email.trim() || !mobile.trim()) return false;
-    if (validateName(fullName) || validateEmail(email) || validatePhone(mobile, { completeOnly: true }))
-      return false;
+    if (!role || validateName(fullName)) return false;
+    if (role === 'customer') {
+      if (!credential.trim() || validateCredential(credential)) return false;
+      return true;
+    }
+    if (!email.trim() || validateEmail(email)) return false;
+    if (!phone.trim() || validatePhone(phone, { completeOnly: true })) return false;
+    if (!photoUri) return false;
     return true;
-  }, [role, fullName, email, mobile]);
+  }, [role, fullName, credential, email, phone, photoUri]);
 
   const onSubmit = async () => {
     const ne = validateName(fullName);
-    const ee = validateEmail(email);
-    const pe = validatePhone(mobile, { completeOnly: true });
+    const ce = role === 'customer' ? validateCredential(credential) : null;
+    const ee = role === 'tradie' ? validateEmail(email) : null;
+    const pe = role === 'tradie' ? validatePhone(phone, { completeOnly: true }) : null;
+    const photoErr =
+      role === 'tradie' && !photoUri ? 'Profile photo is required for service providers.' : null;
     setNameError(ne);
+    setCredentialError(ce);
     setEmailError(ee);
     setPhoneError(pe);
-    if (!role || ne || ee || pe) return;
+    setPhotoError(photoErr);
+    if (!role || ne || ce || ee || pe || photoErr) return;
+
+    const normalizedPhone =
+      role === 'tradie' ? normalizeAustralianPhone(phone) : undefined;
+    const normalizedEmail = role === 'tradie' ? sanitizeEmail(email).value : undefined;
 
     const result = await dispatch(
       signupThunk({
         role,
         fullName: fullName.trim(),
-        email,
-        phone: mobile,
         profilePhotoUri: photoUri ?? undefined,
+        ...(role === 'customer'
+          ? detectCredentialType(credential) === 'phone'
+            ? { phone: credential }
+            : { email: credential }
+          : { email: normalizedEmail, phone: normalizedPhone }),
       }),
     );
 
     if (signupThunk.fulfilled.match(result)) {
-      onContinue({ role, fullName: fullName.trim(), email, phone: mobile });
+      if (role === 'customer') {
+        const type = detectCredentialType(credential);
+        onContinue({
+          role,
+          fullName: fullName.trim(),
+          identifier: credential,
+          identifierType: type === 'phone' ? 'phone' : 'email',
+        });
+      } else {
+        onContinue({
+          role,
+          fullName: fullName.trim(),
+          identifier: normalizedPhone!,
+          identifierType: 'phone',
+        });
+      }
     }
   };
+
+  const credentialIcon =
+    credentialType === 'email' ? 'mail-01' : 'smart-phone-02';
 
   return (
     <KeyboardFormScrollView
@@ -136,7 +188,7 @@ export function SignUpScreen({ onContinue, onBack, onSignIn, onSkipToHome }: Pro
             {photoUri ? (
               <Image source={{ uri: photoUri }} style={styles.avatarImage} resizeMode="cover" />
             ) : (
-              <View style={styles.avatarPlaceholder}>
+              <View style={[styles.avatarPlaceholder, photoError && styles.avatarPlaceholderError]}>
                 <Icon name="user-03" width={32} height={32} color={colors.placeholder} />
               </View>
             )}
@@ -145,24 +197,32 @@ export function SignUpScreen({ onContinue, onBack, onSignIn, onSkipToHome }: Pro
               <Icon name="add-01" width={14} height={14} color={colors.onPrimary} />
             </View>
           </Pressable>
-          <Text style={styles.avatarHint}>
-            {photoUri ? 'Tap to change photo' : 'Add profile photo (optional)'}
-          </Text>
+          <Text style={styles.avatarHint}>{avatarHint}</Text>
+          {photoError ? <Text style={styles.avatarError}>{photoError}</Text> : null}
         </View>
 
         <Text style={styles.sectionLabel}>Choose Your Role</Text>
         <View style={styles.roleRow}>
           <RoleTile
-            label="Tradies"
+            label="Service Providers"
             image={tradieArt}
             selected={role === 'tradie'}
-            onPress={() => setRole('tradie')}
+            onPress={() => {
+              setRole('tradie');
+              setCredentialError(null);
+              setPhotoError(null);
+            }}
           />
           <RoleTile
             label="Customers"
             image={customerArt}
             selected={role === 'customer'}
-            onPress={() => setRole('customer')}
+            onPress={() => {
+              setRole('customer');
+              setEmailError(null);
+              setPhoneError(null);
+              setPhotoError(null);
+            }}
           />
         </View>
 
@@ -181,39 +241,55 @@ export function SignUpScreen({ onContinue, onBack, onSignIn, onSkipToHome }: Pro
             placeholder="Jack White"
             error={nameError ?? undefined}
           />
-          <AppTextField
-            label="Email"
-            leftIconName="mail-01"
-            autoComplete="email"
-            keyboardType="email-address"
-            value={email}
-            onChangeText={(raw) => {
-              const { value, hadInvalid } = sanitizeEmail(raw);
-              setEmail(value);
-              const vErr = validateEmail(value);
-              setEmailError(hadInvalid ? 'Email cannot have leading or trailing spaces.' : vErr);
-            }}
-            placeholder="you@example.com"
-            error={emailError ?? undefined}
-          />
-          <AppTextField
-            label="Phone number"
-            leftIconName="smart-phone-02"
-            keyboardType="phone-pad"
-            autoComplete="tel"
-            value={mobile}
-            onChangeText={(raw) => {
-              const { value, hadInvalid } = sanitizeAustralianPhone(raw);
-              setMobile(value || AU_PHONE_DIAL_CODE);
-              const err = validatePhone(value || AU_PHONE_DIAL_CODE);
-              setPhoneError(
-                hadInvalid ? 'Use digits only (Australian format, e.g. 0412 345 678).' : err,
-              );
-            }}
-            maxLength={AU_PHONE_E164_MAX_LENGTH}
-            placeholder="Phone number"
-            error={phoneError ?? undefined}
-          />
+          {role === 'tradie' ? (
+            <>
+              <AppTextField
+                label="Email"
+                leftIconName="mail-01"
+                keyboardType="email-address"
+                autoComplete="email"
+                autoCapitalize="none"
+                value={email}
+                onChangeText={(raw) => {
+                  const { value } = sanitizeEmail(raw);
+                  setEmail(value);
+                  setEmailError(validateEmail(value));
+                }}
+                placeholder="you@example.com"
+                error={emailError ?? undefined}
+              />
+              <AppTextField
+                label="Phone"
+                leftIconName="smart-phone-02"
+                keyboardType="phone-pad"
+                autoComplete="tel"
+                value={phone}
+                onChangeText={(raw) => {
+                  const value = normalizeAustralianPhone(raw) || raw.replace(/[^\d+]/g, '');
+                  setPhone(value);
+                  setPhoneError(validatePhone(value, { completeOnly: true }));
+                }}
+                placeholder="0412 345 678"
+                error={phoneError ?? undefined}
+              />
+            </>
+          ) : (
+            <AppTextField
+              label="Phone or Email"
+              leftIconName={credentialIcon}
+              keyboardType="email-address"
+              autoComplete="email"
+              autoCapitalize="none"
+              value={credential}
+              onChangeText={(raw) => {
+                const value = normalizeCredentialInput(raw);
+                setCredential(value);
+                setCredentialError(validateCredential(value));
+              }}
+              placeholder="Phone number or email address"
+              error={credentialError ?? undefined}
+            />
+          )}
         </View>
 
         <AppButton
@@ -344,6 +420,16 @@ const styles = StyleSheet.create({
     lineHeight: 16,
     color: colors.label,
   },
+  avatarPlaceholderError: {
+    borderColor: colors.error,
+  },
+  avatarError: {
+    fontFamily: fontFamilies.inter.regular,
+    fontSize: 12,
+    lineHeight: 16,
+    color: colors.error,
+    textAlign: 'center',
+  },
   // ── Role tiles ─────────────────────────────────────────────────────────────
   sectionLabel: {
     ...nunitoSans.semibold,
@@ -359,7 +445,11 @@ const styles = StyleSheet.create({
     gap: 20,
     marginBottom: 32,
   },
-  tile: { width: 85, alignItems: 'center', gap: spacing.sm, paddingVertical: 0 },
+  tile: { width: 85,
+     alignItems: 'center', 
+     gap: spacing.sm, 
+    paddingVertical: 0 ,
+  },
   tileSelected: { opacity: 1 },
   tileImageWrap: {
     width: 85,
@@ -379,6 +469,7 @@ const styles = StyleSheet.create({
     fontSize: 14,
     lineHeight: 18,
     color: colors.onboardingTitle,
+    textAlign:"center"
   },
   tileLabelSelected: { color: colors.onboardingTitle, fontFamily: fontFamilies.inter.semibold },
   // ── Fields ─────────────────────────────────────────────────────────────────

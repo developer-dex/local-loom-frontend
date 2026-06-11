@@ -13,6 +13,8 @@ export type TradieApplicationDraft = {
   abn: string;
   abnData: AbnLookupResult | null;
   businessName: string;
+  licenseNumber: string;
+  licenseExpiryDate: string | null;
   selectedServiceIds: string[];
   videoUri: { uri: string; name: string } | null;
   /** Region UUID from GET /regions */

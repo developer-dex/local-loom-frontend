@@ -106,7 +106,7 @@ export const fetchTradiesThunk = createAsyncThunk(
       const res = await fetchTradiesApi(params);
       return res.data;
     } catch (err: unknown) {
-      const msg = err instanceof Error ? err.message : 'Failed to load tradies';
+      const msg = err instanceof Error ? err.message : 'Failed to load service providers';
       return rejectWithValue(msg);
     }
   },
@@ -123,7 +123,7 @@ export const fetchTradieDetailThunk = createAsyncThunk(
       const res = await fetchTradieByIdApi(id);
       return res.data;
     } catch (err: unknown) {
-      const msg = err instanceof Error ? err.message : 'Failed to load tradie profile';
+      const msg = err instanceof Error ? err.message : 'Failed to load service provider profile';
       return rejectWithValue(msg);
     }
   },
@@ -140,7 +140,7 @@ export const fetchMyTradieProfileThunk = createAsyncThunk(
       const res = await fetchMyTradieProfileApi();
       return res.data;
     } catch (err: unknown) {
-      const msg = err instanceof Error ? err.message : 'Failed to load your tradie profile';
+      const msg = err instanceof Error ? err.message : 'Failed to load your service provider profile';
       return rejectWithValue(msg);
     }
   },
@@ -207,7 +207,7 @@ export const fetchTradieStatsThunk = createAsyncThunk(
       const res = await fetchTradieStatsApi();
       return res.data;
     } catch (err: unknown) {
-      const msg = err instanceof Error ? err.message : 'Failed to load tradie stats';
+      const msg = err instanceof Error ? err.message : 'Failed to load service provider stats';
       return rejectWithValue(msg);
     }
   },

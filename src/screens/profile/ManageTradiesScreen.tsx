@@ -1,9 +1,9 @@
-import { useCallback } from 'react';
-import { ActivityIndicator, Pressable, StyleSheet, Text, View } from 'react-native';
+import { useCallback, useEffect, useRef } from 'react';
+import { ActivityIndicator, BackHandler, Pressable, StyleSheet, Text, View } from 'react-native';
 import { useFocusEffect, useNavigation } from '@react-navigation/native';
 import type { NativeStackNavigationProp } from '@react-navigation/native-stack';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
-import { Icon } from '../../components/ui';
+import { AppButton, Icon } from '../../components/ui';
 import type { RootStackParamList } from '../../navigation/types';
 import {
   useAppDispatch,
@@ -33,6 +33,28 @@ export function ManageTradiesScreen() {
   const status = authUser?.tradieProfileStatus ?? profile?.profileStatus ?? 'pending';
   const approved = isTradieProfileApproved(status);
   const loading = approved && profileFetchStatus === 'loading' && !profile;
+  const isReviewState = !approved;
+  const allowLeaveRef = useRef(false);
+
+  useEffect(() => {
+    navigation.setOptions({ gestureEnabled: !isReviewState });
+  }, [isReviewState, navigation]);
+
+  useEffect(() => {
+    if (!isReviewState) return;
+
+    const onHardwareBack = () => true;
+    const backSub = BackHandler.addEventListener('hardwareBackPress', onHardwareBack);
+    const removeNavBlock = navigation.addListener('beforeRemove', (e) => {
+      if (allowLeaveRef.current) return;
+      e.preventDefault();
+    });
+
+    return () => {
+      backSub.remove();
+      removeNavBlock();
+    };
+  }, [isReviewState, navigation]);
 
   useFocusEffect(
     useCallback(() => {
@@ -53,8 +75,16 @@ export function ManageTradiesScreen() {
     navigation.navigate('BecomeTradie', { mode: 'edit', initial });
   }, [approved, profile, authUser, navigation]);
 
+  const onOkay = useCallback(() => {
+    allowLeaveRef.current = true;
+    navigation.reset({
+      index: 0,
+      routes: [{ name: 'MainTabs', params: { screen: 'Profile' } }],
+    });
+  }, [navigation]);
+
   const title = approved
-    ? 'Manage your tradie profile'
+    ? 'Manage your service provider profile'
     : status === 'rejected'
       ? 'Your application was not approved'
       : 'Application under review';
@@ -69,20 +99,25 @@ export function ManageTradiesScreen() {
   return (
     <View style={[styles.screen, { paddingTop: insets.top }]}>
       <View style={styles.header}>
-        <Pressable
-          accessibilityRole="button"
-          accessibilityLabel="Back"
-          hitSlop={10}
-          onPress={() => {
-            if (navigation.canGoBack()) navigation.goBack();
-          }}
-          style={({ pressed }) => [styles.backBtn, pressed && styles.pressed]}
-        >
-          <Icon name="arrow-left-01" width={24} height={24} color={colors.onboardingTitle} />
-        </Pressable>
+        {isReviewState ? (
+          <View style={styles.headerSide} />
+        ) : (
+          <Pressable
+            accessibilityRole="button"
+            accessibilityLabel="Back"
+            hitSlop={10}
+            onPress={() => {
+              if (navigation.canGoBack()) navigation.goBack();
+            }}
+            style={({ pressed }) => [styles.headerSide, pressed && styles.pressed]}
+          >
+            <Icon name="arrow-left-01" width={24} height={24} color={colors.onboardingTitle} />
+          </Pressable>
+        )}
         <Text numberOfLines={1} style={styles.headerTitle}>
-          Manage Tradie
+          Manage Service Provider
         </Text>
+        <View style={styles.headerSide} />
       </View>
 
       <View style={[styles.content, { paddingBottom: Math.max(insets.bottom, 14) + 24 }]}>
@@ -104,7 +139,7 @@ export function ManageTradiesScreen() {
             {approved ? (
               <Pressable
                 accessibilityRole="button"
-                accessibilityLabel="Edit tradie profile"
+                accessibilityLabel="Edit service provider profile"
                 onPress={onEditProfile}
                 disabled={!profile}
                 style={({ pressed }) => [
@@ -115,7 +150,14 @@ export function ManageTradiesScreen() {
               >
                 <Text style={styles.primaryBtnText}>Edit profile</Text>
               </Pressable>
-            ) : null}
+            ) : (
+              <AppButton
+                title="Okay"
+                onPress={onOkay}
+                containerStyle={styles.okayBtn}
+                accessibilityLabel="Okay, return to profile"
+              />
+            )}
           </View>
         )}
       </View>
@@ -137,10 +179,10 @@ const styles = StyleSheet.create({
     gap: 16,
     backgroundColor: colors.background,
   },
-  backBtn: {
-    width: 24,
-    height: 24,
-    alignItems: 'center',
+  headerSide: {
+    width: 40,
+    height: 40,
+    alignItems: 'flex-start',
     justifyContent: 'center',
   },
   headerTitle: {
@@ -149,6 +191,7 @@ const styles = StyleSheet.create({
     fontSize: 18,
     lineHeight: 24,
     color: colors.onboardingTitle,
+    textAlign: 'center',
   },
   content: {
     flex: 1,
@@ -217,6 +260,9 @@ const styles = StyleSheet.create({
     fontSize: 14,
     lineHeight: 18,
     color: colors.onPrimary,
+  },
+  okayBtn: {
+    alignSelf: 'stretch',
   },
   pressed: {
     opacity: 0.7,

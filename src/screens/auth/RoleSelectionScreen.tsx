@@ -50,7 +50,7 @@ export function RoleSelectionScreen({ onSelectCustomer, onSelectProvider }: Prop
         <View style={styles.cards}>
           <RoleCard
             title="I'm a Customer"
-            description="Browse trusted local tradies, compare services, and book with confidence."
+            description="Browse trusted local service providers, compare services, and book with confidence."
             image={customerArt}
             accentColor={colors.primary}
             onPress={onSelectCustomer}
