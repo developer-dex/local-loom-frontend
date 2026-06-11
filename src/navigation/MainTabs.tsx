@@ -88,7 +88,12 @@ function PillTabBar({ state, descriptors, navigation }: BottomTabBarProps) {
                   <View style={[styles.iconCircle, { backgroundColor: iconBg }]}>
                     <Icon name={m.iconName} width={24} height={24}  color={iconColor}/>
                   </View>
-                  <Text numberOfLines={1} style={[styles.itemLabel, { color: labelColor }]}>
+                  <Text
+                    numberOfLines={1}
+                    adjustsFontSizeToFit
+                    minimumFontScale={0.75}
+                    style={[styles.itemLabel, { color: labelColor }]}
+                  >
                     {m.label}
                   </Text>
                 </Pressable>
@@ -155,8 +160,8 @@ const styles = StyleSheet.create({
     flex: 1,
     flexDirection: 'row',
     alignItems: 'center',
-    gap: 12,
-    paddingRight: 16,
+    gap: 8,
+    paddingRight: 12,
     backgroundColor: 'rgba(0,0,0,0.03)',
     borderRadius: 999,
   },
@@ -171,6 +176,7 @@ const styles = StyleSheet.create({
     fontFamily: fontFamilies.inter.medium,
     fontSize: 14,
     lineHeight: 16,
+    flexShrink: 1,
   },
 });
 
