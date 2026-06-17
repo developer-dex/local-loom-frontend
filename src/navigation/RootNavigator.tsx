@@ -12,6 +12,7 @@ import { ServiceDetailScreen } from '../screens/main/ServiceDetailScreen';
 import { TermsAndConditionsScreen } from '../screens/profile/TermsAndConditionsScreen';
 import { PrivacyPolicyScreen } from '../screens/profile/PrivacyPolicyScreen';
 import { HelpSupportScreen } from '../screens/profile/HelpSupportScreen';
+import { AboutUsScreen } from '../screens/profile/AboutUsScreen';
 import { FaqScreen } from '../screens/profile/FaqScreen';
 import { BecomeTradieScreen } from '../screens/profile/BecomeTradieScreen';
 import { ManageTradiesScreen } from '../screens/profile/ManageTradiesScreen';
@@ -19,6 +20,7 @@ import { ChatDetailScreen } from '../screens/chat';
 import { AiSearchScreen } from '../screens/ai';
 import { getOnboardingSeen, setOnboardingSeen } from '../storage/onboardingStorage';
 import { useAuth } from '../context/AuthContext';
+import { resendOtpApi } from '../api/auth';
 import { navigationIntegration } from '../monitoring/sentry';
 
 const Stack = createNativeStackNavigator<RootStackParamList>();
@@ -80,7 +82,7 @@ function OtpScreen({ navigation, route }: NativeStackScreenProps<RootStackParamL
         navigation.replace('MainTabs');
       }}
       onResend={() => {
-        // TODO: call resend API
+        void resendOtpApi({ identifier, identifierType });
       }}
     />
   );
@@ -224,6 +226,7 @@ export function RootNavigator() {
           <Stack.Screen name="TermsAndConditions" component={TermsAndConditionsScreen} />
           <Stack.Screen name="PrivacyPolicy" component={PrivacyPolicyScreen} />
           <Stack.Screen name="HelpSupport" component={HelpSupportScreen} />
+          <Stack.Screen name="AboutUs" component={AboutUsScreen} />
           <Stack.Screen name="Faq" component={FaqScreen} />
           <Stack.Screen name="BecomeTradie" component={BecomeTradieScreen} />
           <Stack.Screen name="ManageTradies" component={ManageTradiesScreen} />

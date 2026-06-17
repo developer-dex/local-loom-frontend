@@ -33,6 +33,7 @@ export function myTradieProfileToDraft(
     abn: profile.abn ?? '',
     abnData: abnData && typeof abnData === 'object' ? abnData : null,
     businessName: profile.businessName ?? '',
+    businessNumber: profile.businessNumber ?? '',
     licenseNumber: profile.licenseNumber ?? '',
     licenseExpiryDate: profile.licenseExpiryDate ?? null,
     selectedServiceIds: profile.services?.map((s) => s.id) ?? [],

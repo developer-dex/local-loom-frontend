@@ -429,6 +429,10 @@ export function BecomeTradieScreen() {
     initial?.abn && initial?.abnData ? initial.abn : null,
   );
   const [businessName, setBusinessName] = useState(initial?.businessName ?? '');
+  const [businessNumber, setbusinessNumber] = useState(initial?.businessNumber ?? '');
+  const [requiresLicence, setRequiresLicence] = useState<boolean | null>(
+    initial?.licenseNumber ? true : null,
+  );
   const [licenseNumber, setLicenseNumber] = useState(initial?.licenseNumber ?? '');
   const [licenseExpiryDate, setLicenseExpiryDate] = useState(
     formatLicenseExpiryForDisplay(initial?.licenseExpiryDate),
@@ -474,6 +478,7 @@ export function BecomeTradieScreen() {
   const [phoneError, setPhoneError] = useState<string | null>(null);
   const [documentsError, setDocumentsError] = useState<string | null>(null);
   const [businessNameError, setBusinessNameError] = useState<string | null>(null);
+  const [businessNumberError, setbusinessNumberError] = useState<string | null>(null);
   const [licenseNumberError, setLicenseNumberError] = useState<string | null>(null);
   const [licenseExpiryError, setLicenseExpiryError] = useState<string | null>(null);
   const [servicesError, setServicesError] = useState<string | null>(null);
@@ -835,8 +840,9 @@ export function BecomeTradieScreen() {
             ? 'Please enter a valid ABN and wait for verification.'
             : null;
     const nextBusinessNameError = !businessName.trim() ? 'Business name is required.' : null;
-    const nextLicenseNumberError = validateLicenseNumber(licenseNumber);
-    const nextLicenseExpiryError = validateLicenseExpiry(licenseExpiryDate);
+    const nextbusinessNumberError = !businessNumber.trim() ? 'Business registration number is required.' : null;
+    const nextLicenseNumberError = requiresLicence ? validateLicenseNumber(licenseNumber) : null;
+    const nextLicenseExpiryError = requiresLicence ? validateLicenseExpiry(licenseExpiryDate) : null;
     const validCategoryIds = filterUuids(
       selectedServiceIds.filter((id) => categoryNameById.has(id)),
     );
@@ -858,6 +864,7 @@ export function BecomeTradieScreen() {
 
     setAbnError(nextAbnError);
     setBusinessNameError(nextBusinessNameError);
+    setbusinessNumberError(nextbusinessNumberError);
     setLicenseNumberError(nextLicenseNumberError);
     setLicenseExpiryError(nextLicenseExpiryError);
     setServicesError(nextServicesError);
@@ -871,6 +878,7 @@ export function BecomeTradieScreen() {
     return !(
       nextAbnError ||
       nextBusinessNameError ||
+      nextbusinessNumberError ||
       nextLicenseNumberError ||
       nextLicenseExpiryError ||
       nextServicesError ||
@@ -887,6 +895,8 @@ export function BecomeTradieScreen() {
     abnLookupResult,
     verifiedAbn,
     businessName,
+    businessNumber,
+    requiresLicence,
     licenseNumber,
     licenseExpiryDate,
     selectedServiceIds,
@@ -909,8 +919,9 @@ export function BecomeTradieScreen() {
       abn,
       abnData: abnLookupResult,
       businessName: businessName.trim(),
-      licenseNumber: licenseNumber.trim(),
-      licenseExpiryDate: parseLicenseExpiryInput(licenseExpiryDate),
+      businessNumber: businessNumber.trim(),
+      licenseNumber: requiresLicence ? licenseNumber.trim() : '',
+      licenseExpiryDate: requiresLicence ? parseLicenseExpiryInput(licenseExpiryDate) : null,
       selectedServiceIds,
       videoUri,
       selectedRegionId,
@@ -932,6 +943,8 @@ export function BecomeTradieScreen() {
     abn,
     abnLookupResult,
     businessName,
+    businessNumber,
+    requiresLicence,
     licenseNumber,
     licenseExpiryDate,
     selectedServiceIds,
@@ -965,6 +978,7 @@ export function BecomeTradieScreen() {
     const result = await dispatch(
       setupBusinessProfileThunk({
         businessName: draft.businessName.trim(),
+        businessNumber: draft.businessNumber?.trim() || undefined,
         licenseNumber: draft.licenseNumber.trim(),
         licenseExpiryDate: draft.licenseExpiryDate ?? undefined,
         abn: draft.abn.trim(),
@@ -1180,8 +1194,8 @@ export function BecomeTradieScreen() {
   return (
     <KeyboardAvoidingView
       style={styles.flex}
-      behavior="padding"
-      keyboardVerticalOffset={insets.top}
+      behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
+      keyboardVerticalOffset={Platform.OS === 'ios' ? insets.top : 0}
     >
       <View style={[styles.screen, { paddingTop: insets.top }]}>
         <View style={styles.topBar}>
@@ -1318,6 +1332,86 @@ export function BecomeTradieScreen() {
 
           {step === 1 ? (
             <View style={styles.block}>
+              {/* Licence question toggle */}
+              <View style={styles.licenceQuestionRow}>
+                <Text style={styles.licenceQuestionText}>
+                  Does your trade require a{'\n'}licence or registration number?
+                </Text>
+                <View style={styles.licenceToggleGroup}>
+                  <Pressable
+                    onPress={() => {
+                      setRequiresLicence(false);
+                      setLicenseNumber('');
+                      setLicenseExpiryDate('');
+                      setLicenseNumberError(null);
+                      setLicenseExpiryError(null);
+                    }}
+                    style={[
+                      styles.licenceToggleBtn,
+                      requiresLicence === false && styles.licenceToggleBtnInactive,
+                    ]}
+                  >
+                    <Text
+                      style={[
+                        styles.licenceToggleBtnText,
+                        requiresLicence === false && styles.licenceToggleBtnTextInactive,
+                      ]}
+                    >
+                      No
+                    </Text>
+                  </Pressable>
+                  <Pressable
+                    onPress={() => setRequiresLicence(true)}
+                    style={[
+                      styles.licenceToggleBtn,
+                      requiresLicence === true && styles.licenceToggleBtnActive,
+                    ]}
+                  >
+                    <Text
+                      style={[
+                        styles.licenceToggleBtnText,
+                        requiresLicence === true && styles.licenceToggleBtnTextActive,
+                      ]}
+                    >
+                      Yes
+                    </Text>
+                  </Pressable>
+                </View>
+              </View>
+
+              {requiresLicence ? (
+                <>
+                  <AppTextField
+                    label="Licence Number"
+                    value={licenseNumber}
+                    onChangeText={(t) => {
+                      setLicenseNumber(t);
+                      setLicenseNumberError(validateLicenseNumber(t));
+                    }}
+                    placeholder="Enter licence number"
+                    autoCapitalize="characters"
+                    autoCorrect={false}
+                    leftIconName="transaction-history"
+                    error={licenseNumberError ?? undefined}
+                    inputStyle={inputColor}
+                  />
+
+                  <AppTextField
+                    label="Licence Expiry Date"
+                    value={licenseExpiryDate}
+                    onChangeText={(t) => {
+                      setLicenseExpiryDate(t);
+                      setLicenseExpiryError(validateLicenseExpiry(t));
+                    }}
+                    placeholder="DD/MM/YYYY"
+                    keyboardType="numbers-and-punctuation"
+                    leftIconName="time-04"
+                    error={licenseExpiryError ?? undefined}
+                    inputStyle={inputColor}
+                  />
+                </>
+              ) : null}
+
               <AppTextField
                 label="Business Name"
                 value={businessName}
@@ -1331,31 +1425,16 @@ export function BecomeTradieScreen() {
               />
 
               <AppTextField
-                label="Licence Number"
-                value={licenseNumber}
+                label="Business Number"
+                value={businessNumber}
                 onChangeText={(t) => {
-                  setLicenseNumber(t);
-                  setLicenseNumberError(validateLicenseNumber(t));
+                  setbusinessNumber(t);
+                  setbusinessNumberError(null);
                 }}
-                placeholder="Enter licence number"
+                placeholder="Enter business number"
                 autoCapitalize="characters"
                 autoCorrect={false}
-                leftIconName="transaction-history"
-                error={licenseNumberError ?? undefined}
-                inputStyle={inputColor}
-              />
-
-              <AppTextField
-                label="Licence Expiry Date"
-                value={licenseExpiryDate}
-                onChangeText={(t) => {
-                  setLicenseExpiryDate(t);
-                  setLicenseExpiryError(validateLicenseExpiry(t));
-                }}
-                placeholder="DD/MM/YYYY"
-                keyboardType="numbers-and-punctuation"
-                leftIconName="time-04"
-                error={licenseExpiryError ?? undefined}
+                error={businessNumberError ?? undefined}
                 inputStyle={inputColor}
               />
 
@@ -1483,13 +1562,6 @@ export function BecomeTradieScreen() {
                 ) : null}
                 <FieldError message={locationError} />
               </View>
-
-              <DocumentUploadField
-                label="Image"
-                placeholder="Upload Image"
-                fileName={businessImageUri?.name ?? null}
-                onPress={onPickBusinessImage}
-              />
 
               <View style={styles.fieldGroup}>
                 <Text style={styles.fieldLabel}>Service Description</Text>
@@ -1996,7 +2068,7 @@ const styles = StyleSheet.create({
   },
   scrollContent: {
     paddingHorizontal: 20,
-    paddingBottom: 24,
+    paddingBottom: 80,
   },
   title: {
     fontFamily: fontFamilies.inter.semibold,
@@ -2007,6 +2079,46 @@ const styles = StyleSheet.create({
   },
   block: {
     gap: 20,
+  },
+  licenceQuestionRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    gap: 12,
+  },
+  licenceQuestionText: {
+    flex: 1,
+    fontFamily: fontFamilies.inter.semibold,
+    fontSize: 14,
+    lineHeight: 20,
+    color: colors.onboardingTitle,
+  },
+  licenceToggleGroup: {
+    flexDirection: 'row',
+    gap: 8,
+  },
+  licenceToggleBtn: {
+    paddingHorizontal: 18,
+    paddingVertical: 10,
+    borderRadius: 999,
+    backgroundColor: '#F0F0F0',
+  },
+  licenceToggleBtnActive: {
+    backgroundColor: colors.primary,
+  },
+  licenceToggleBtnInactive: {
+    backgroundColor: colors.primary,
+  },
+  licenceToggleBtnText: {
+    fontFamily: fontFamilies.inter.medium,
+    fontSize: 14,
+    color: colors.placeholder,
+  },
+  licenceToggleBtnTextActive: {
+    color: colors.onPrimary,
+  },
+  licenceToggleBtnTextInactive: {
+    color: colors.onPrimary,
   },
   uploadWrap: {
     alignItems: 'center',

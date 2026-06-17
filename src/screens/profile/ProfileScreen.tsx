@@ -48,7 +48,7 @@ const MENU_ITEMS: MenuItem[] = [
   { key: 'terms', icon: 'terms', label: 'Terms & Conditions' },
   { key: 'about', icon: 'about', label: 'About' },
   { key: 'faq', icon: 'faq', label: "FAQ'S" },
-  { key: 'privacy', icon: 'icn_privacy', label: 'Privacy Policy' },
+  // { key: 'privacy', icon: 'icn_privacy', label: 'Privacy Policy' },
   { key: 'delete', icon: 'trash', label: 'Delete Account' },
 ];
 
@@ -143,16 +143,20 @@ export function ProfileScreen() {
         getRootNav()?.navigate('TermsAndConditions');
         return;
       }
-      if (key === 'privacy') {
-        getRootNav()?.navigate('PrivacyPolicy');
-        return;
-      }
+      // if (key === 'privacy') {
+      //   getRootNav()?.navigate('PrivacyPolicy');
+      //   return;
+      // }
       if (key === 'help') {
         getRootNav()?.navigate('HelpSupport');
         return;
       }
       if (key === 'faq') {
         getRootNav()?.navigate('Faq');
+        return;
+      }
+      if (key === 'about') {
+        getRootNav()?.navigate('AboutUs');
         return;
       }
     },

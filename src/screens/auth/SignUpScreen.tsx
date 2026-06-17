@@ -54,6 +54,8 @@ export function SignUpScreen({ onContinue, onBack, onSignIn, onSkipToHome }: Pro
   const [credentialError, setCredentialError] = useState<string | null>(null);
   const [emailError, setEmailError] = useState<string | null>(null);
   const [phoneError, setPhoneError] = useState<string | null>(null);
+  const [termsAccepted, setTermsAccepted] = useState(false);
+  const [termsError, setTermsError] = useState<string | null>(null);
 
   const submitting = apiStatus === 'loading';
   const credentialType = detectCredentialType(credential);
@@ -97,9 +99,9 @@ export function SignUpScreen({ onContinue, onBack, onSignIn, onSkipToHome }: Pro
     }
     if (!email.trim() || validateEmail(email)) return false;
     if (!phone.trim() || validatePhone(phone, { completeOnly: true })) return false;
-    if (!photoUri) return false;
+    if (!termsAccepted) return false;
     return true;
-  }, [role, fullName, credential, email, phone, photoUri]);
+  }, [role, fullName, credential, email, phone, termsAccepted]);
 
   const onSubmit = async () => {
     const ne = validateName(fullName);
@@ -113,7 +115,9 @@ export function SignUpScreen({ onContinue, onBack, onSignIn, onSkipToHome }: Pro
     setEmailError(ee);
     setPhoneError(pe);
     setPhotoError(photoErr);
-    if (!role || ne || ce || ee || pe || photoErr) return;
+    const termsErr = !termsAccepted ? 'You must accept the Terms & Conditions.' : null;
+    setTermsError(termsErr);
+    if (!role || ne || ce || ee || pe || photoErr || termsErr) return;
 
     const normalizedPhone =
       role === 'tradie' ? normalizeAustralianPhone(phone) : undefined;
@@ -292,6 +296,30 @@ export function SignUpScreen({ onContinue, onBack, onSignIn, onSkipToHome }: Pro
           )}
         </View>
 
+        {/* Terms & Conditions checkbox */}
+        <Pressable
+          style={styles.termsRow}
+          onPress={() => {
+            setTermsAccepted((prev) => !prev);
+            setTermsError(null);
+          }}
+          accessibilityRole="checkbox"
+          accessibilityState={{ checked: termsAccepted }}
+        >
+          <View style={[styles.checkbox, termsAccepted && styles.checkboxChecked, termsError && styles.checkboxError]}>
+            {termsAccepted ? (
+              <Text style={styles.checkmarkText}>✓</Text>
+            ) : null}
+          </View>
+          <Text style={styles.termsText}>
+            I agree to the{' '}
+            <Text style={styles.termsLink}>Terms & Conditions</Text>
+            {' '}and{' '}
+            <Text style={styles.termsLink}>Privacy Policy</Text>
+          </Text>
+        </Pressable>
+        {termsError ? <Text style={styles.termsErrorText}>{termsError}</Text> : null}
+
         <AppButton
           title="Continue"
           onPress={onSubmit}
@@ -306,12 +334,6 @@ export function SignUpScreen({ onContinue, onBack, onSignIn, onSkipToHome }: Pro
             <Text style={styles.footerLink}>Sign In</Text>
           </Pressable>
         </View>
-
-        <Text style={styles.legal}>
-          By entering your number, you're agreeing to our{' '}
-          <Text style={styles.legalLink}>Terms & Conditions</Text> and{' '}
-          <Text style={styles.legalLink}>Privacy Policy</Text>
-        </Text>
     </KeyboardFormScrollView>
   );
 }
@@ -474,6 +496,56 @@ const styles = StyleSheet.create({
   tileLabelSelected: { color: colors.onboardingTitle, fontFamily: fontFamilies.inter.semibold },
   // ── Fields ─────────────────────────────────────────────────────────────────
   fields: { gap: spacing.md, marginBottom: 24 },
+  // ── Terms checkbox ─────────────────────────────────────────────────────────
+  termsRow: {
+    flexDirection: 'row',
+    alignItems: 'flex-start',
+    gap: 10,
+    marginTop: 8,
+  },
+  checkbox: {
+    width: 22,
+    height: 22,
+    borderRadius: 6,
+    borderWidth: 1.5,
+    borderColor: colors.border,
+    alignItems: 'center',
+    justifyContent: 'center',
+    backgroundColor: colors.background,
+  },
+  checkboxChecked: {
+    backgroundColor: colors.primary,
+    borderColor: colors.primary,
+  },
+  checkmarkText: {
+    color: colors.onPrimary,
+    fontSize: 14,
+    fontWeight: '700',
+    lineHeight: 18,
+  },
+  checkboxError: {
+    borderColor: colors.error,
+  },
+  termsText: {
+    flex: 1,
+    fontFamily: fontFamilies.inter.regular,
+    fontSize: 13,
+    lineHeight: 18,
+    color: colors.onboardingTitle,
+    marginTop: 2,
+  },
+  termsLink: {
+    color: colors.primary,
+    fontFamily: fontFamilies.inter.semibold,
+  },
+  termsErrorText: {
+    fontFamily: fontFamilies.inter.regular,
+    fontSize: 12,
+    lineHeight: 16,
+    color: colors.error,
+    marginTop: 4,
+    marginLeft: 32,
+  },
   cta: { marginTop: 16, marginBottom: 32, width: '100%' },
   footerRow: {
     flexDirection: 'row',
@@ -493,13 +565,4 @@ const styles = StyleSheet.create({
     lineHeight: 18,
     color: colors.primary,
   },
-  legal: {
-    fontFamily: fontFamilies.inter.regular,
-    fontSize: 11,
-    lineHeight: 16,
-    color: colors.onboardingTitle,
-    textAlign: 'center',
-    maxWidth: 320,
-  },
-  legalLink: { color: '#1B70F3', textDecorationLine: 'underline' },
 });

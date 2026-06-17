@@ -13,6 +13,7 @@ export type TradieApplicationDraft = {
   abn: string;
   abnData: AbnLookupResult | null;
   businessName: string;
+  businessNumber?: string;
   licenseNumber: string;
   licenseExpiryDate: string | null;
   selectedServiceIds: string[];

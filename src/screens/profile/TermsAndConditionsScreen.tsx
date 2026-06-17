@@ -55,10 +55,11 @@ export function TermsAndConditionsScreen() {
         title: 'Platform Role (Very Important)',
         bullets: [
           'LocalLoom acts only as a connection platform between customers and service providers.',
-          'We do not:',
-          'Provide services',
-          'Guarantee work quality',
-          'Take commissions or fees from jobs',
+          // 'We do not:',
+          'We do not Provide services',
+          'We do not Guarantee work quality',
+          'We do not Take commissions or fees from jobs',
+          'We do not Take any responsibility or guarantee for service provider details',
         ],
       },
       {

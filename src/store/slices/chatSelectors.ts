@@ -7,9 +7,8 @@
  *   - Top-level:    `(state: RootState) => T`
  *   - Parameterized: `(arg) => (state: RootState) => T`
  *
- * Selectors are intentionally non-memoised — array results allocate a fresh
- * array on each call. Hot consumers (FlatList renderers, etc.) can wrap with
- * `useMemo` / `reselect` at the call site if profiling shows it matters.
+ * Hot selectors that derive arrays are memoised via `createSelector` to
+ * prevent unnecessary re-renders when the underlying data hasn't changed.
  *
  * Note on typing: `RootState` is augmented with `chat: ChatSliceState` here
  * so this file type-checks today even though the reducer registration
@@ -19,6 +18,7 @@
  *
  * _Requirements: 2.3, 4.2, 5.2, 12.4, 12.5, 13.6, 14.2, 14.3, 16.2, 20.2_
  */
+import { createSelector } from '@reduxjs/toolkit';
 import type { RootState } from '../index';
 import type { ConnectionStatus } from '../../api/chatSocket';
 import type { ConversationListItem } from '../../api/chatTypes';
@@ -54,17 +54,18 @@ export type TypingUser = {
  *
  * _Requirements: 2.3, 4.2_
  */
-export const selectOrderedConversations = (
-  state: RootStateWithChat,
-): ConversationListItem[] => {
-  const { conversationIds, conversationsById } = state.chat;
-  const result: ConversationListItem[] = [];
-  for (const id of conversationIds) {
-    const conv = conversationsById[id];
-    if (conv) result.push(conv);
-  }
-  return result;
-};
+export const selectOrderedConversations = createSelector(
+  [(state: RootStateWithChat) => state.chat.conversationIds,
+   (state: RootStateWithChat) => state.chat.conversationsById],
+  (conversationIds, conversationsById): ConversationListItem[] => {
+    const result: ConversationListItem[] = [];
+    for (const id of conversationIds) {
+      const conv = conversationsById[id];
+      if (conv) result.push(conv);
+    }
+    return result;
+  },
+);
 
 /**
  * Parameterised selector returning messages for a conversation ordered

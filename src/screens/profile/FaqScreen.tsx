@@ -75,8 +75,6 @@ const FAQ_ITEMS: FaqItem[] = [
   },
 ];
 
-const CHEVRON_COLOR = '#9A9A9A';
-
 export function FaqScreen() {
   const insets = useSafeAreaInsets();
   const navigation = useNavigation();
@@ -114,32 +112,56 @@ export function FaqScreen() {
           { paddingBottom: Math.max(insets.bottom, 14) + 24 },
         ]}
       >
+        {/* Hero */}
+        <View style={styles.heroSection}>
+          <View style={styles.heroIconWrap}>
+            <Text style={styles.heroQuestionMark}>?</Text>
+          </View>
+          <Text style={styles.heroTitle}>Frequently Asked Questions</Text>
+          <Text style={styles.heroSubtitle}>
+            Got questions? We've got answers.
+          </Text>
+        </View>
+
+        {/* FAQ Items */}
         {FAQ_ITEMS.map((item) => {
           const expanded = openId === item.id;
           return (
-            <View key={item.id} style={styles.card}>
-              <Pressable
-                accessibilityRole="button"
-                accessibilityState={{ expanded }}
-                onPress={() => toggle(item.id)}
-                style={({ pressed }) => [styles.cardHeader, pressed && styles.pressed]}
-              >
-                <Text style={styles.question}>
-                  {item.number}. {item.question}
+            <Pressable
+              key={item.id}
+              accessibilityRole="button"
+              accessibilityState={{ expanded }}
+              onPress={() => toggle(item.id)}
+              style={({ pressed }) => [
+                styles.card,
+                expanded && styles.cardExpanded,
+                pressed && styles.pressed,
+              ]}
+            >
+              <View style={styles.cardHeader}>
+                <View style={[styles.numberBadge, expanded && styles.numberBadgeActive]}>
+                  <Text style={[styles.numberText, expanded && styles.numberTextActive]}>
+                    {item.number}
+                  </Text>
+                </View>
+                <Text style={[styles.question, expanded && styles.questionExpanded]}>
+                  {item.question}
                 </Text>
-                <Icon
-                  name={expanded ? 'arrow-up-01' : 'arrow-down-01'}
-                  width={20}
-                  height={20}
-                  color={CHEVRON_COLOR}
-                />
-              </Pressable>
+                <View style={[styles.chevronWrap, expanded && styles.chevronWrapExpanded]}>
+                  <Icon
+                    name={expanded ? 'arrow-up-01' : 'arrow-down-01'}
+                    width={16}
+                    height={16}
+                    color={expanded ? colors.onPrimary : '#9A9A9A'}
+                  />
+                </View>
+              </View>
               {expanded ? (
                 <View style={styles.answerBlock}>
                   <Text style={styles.answer}>{item.answer}</Text>
                 </View>
               ) : null}
-            </View>
+            </Pressable>
           );
         })}
       </ScrollView>
@@ -176,51 +198,128 @@ const styles = StyleSheet.create({
   },
   scroll: {
     flex: 1,
-    backgroundColor: colors.background,
   },
   scrollContent: {
-    flexGrow: 1,
-    backgroundColor: colors.background,
     paddingHorizontal: 20,
-    paddingTop: 24,
+    paddingTop: 16,
     gap: 12,
   },
+  // Hero
+  heroSection: {
+    alignItems: 'center',
+    paddingVertical: 16,
+    gap: 6,
+    marginBottom: 8,
+  },
+  heroIconWrap: {
+    width: 56,
+    height: 56,
+    borderRadius: 28,
+    backgroundColor: 'rgba(245, 142, 131, 0.12)',
+    alignItems: 'center',
+    justifyContent: 'center',
+    marginBottom: 8,
+  },
+  heroQuestionMark: {
+    fontFamily: fontFamilies.inter.bold,
+    fontSize: 28,
+    color: colors.primary,
+  },
+  heroTitle: {
+    fontFamily: fontFamilies.inter.bold,
+    fontSize: 20,
+    lineHeight: 26,
+    color: colors.onboardingTitle,
+    textAlign: 'center',
+  },
+  heroSubtitle: {
+    fontFamily: fontFamilies.inter.regular,
+    fontSize: 13,
+    lineHeight: 18,
+    color: '#717171',
+  },
+  // Cards
   card: {
     backgroundColor: colors.background,
     borderWidth: 1,
     borderColor: colors.border,
     borderRadius: 16,
-    paddingHorizontal: 16,
+    paddingHorizontal: 14,
     paddingVertical: 14,
     shadowColor: '#1B1B4D',
-    shadowOffset: { width: 0, height: 2 },
-    shadowOpacity: 0.04,
-    shadowRadius: 22.5,
-    elevation: 3,
+    shadowOffset: { width: 0, height: 1 },
+    shadowOpacity: 0.03,
+    shadowRadius: 8,
+    elevation: 2,
+  },
+  cardExpanded: {
+    backgroundColor: '#FFFAF9',
+    borderColor: colors.primary,
+    borderWidth: 1.5,
+    shadowOpacity: 0.06,
+    shadowRadius: 12,
+    elevation: 4,
   },
   cardHeader: {
     flexDirection: 'row',
     alignItems: 'center',
     gap: 12,
   },
+  numberBadge: {
+    width: 30,
+    height: 30,
+    borderRadius: 15,
+    backgroundColor: '#F4F4F4',
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  numberBadgeActive: {
+    backgroundColor: colors.primary,
+  },
+  numberText: {
+    fontFamily: fontFamilies.inter.semibold,
+    fontSize: 13,
+    color: '#717171',
+  },
+  numberTextActive: {
+    color: colors.onPrimary,
+  },
   question: {
     flex: 1,
-    ...nunitoSans.medium,
+    fontFamily: fontFamilies.inter.medium,
     fontSize: 14,
-    lineHeight: 18,
+    lineHeight: 19,
     color: '#252525',
+  },
+  questionExpanded: {
+    fontFamily: fontFamilies.inter.semibold,
+    color: colors.onboardingTitle,
+  },
+  chevronWrap: {
+    width: 28,
+    height: 28,
+    borderRadius: 14,
+    backgroundColor: '#F4F4F4',
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  chevronWrapExpanded: {
+    backgroundColor: colors.primary,
   },
   answerBlock: {
     marginTop: 12,
-    paddingRight: 4,
+    marginLeft: 42,
+    paddingTop: 10,
+    borderTopWidth: 1,
+    borderTopColor: 'rgba(245, 142, 131, 0.2)',
   },
   answer: {
-    ...nunitoSans.regular,
-    fontSize: 14,
-    lineHeight: 16,
-    color: '#252525',
+    fontFamily: fontFamilies.inter.regular,
+    fontSize: 13,
+    lineHeight: 20,
+    color: '#555555',
   },
   pressed: {
-    opacity: 0.7,
+    opacity: 0.85,
   },
 });

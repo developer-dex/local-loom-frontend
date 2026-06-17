@@ -60,6 +60,14 @@ export async function verifyOtpApi(req: VerifyOtpRequest): Promise<VerifyOtpResp
 }
 
 /**
+ * POST /auth/resend-otp
+ * Resends a new OTP to the given identifier (phone or email).
+ */
+export async function resendOtpApi(req: { identifier: string; identifierType: 'phone' | 'email' }): Promise<void> {
+  return apiPost<void>(`${BASE}/resend-otp`, { body: req });
+}
+
+/**
  * POST /auth/refresh-token
  * Exchanges a refresh token for a new token pair.
  * Called automatically by the authenticated client — rarely called directly.

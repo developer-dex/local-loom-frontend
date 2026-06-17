@@ -46,6 +46,7 @@ export type MyTradieProfile = {
   id: string;
   userId: string;
   businessName: string | null;
+  businessNumber: string | null;
   businessLocation: string | null;
   serviceDescription: string | null;
   website: string | null;
@@ -195,6 +196,7 @@ export type AbnLookupResult = {
 
 export type BusinessSetupRequest = {
   businessName: string;
+  businessNumber?: string;
   licenseNumber?: string;
   licenseExpiryDate?: string;
   abn?: string;

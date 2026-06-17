@@ -7,11 +7,13 @@ import {
   type ReactNode,
 } from 'react';
 import {
-  InteractionManager,
+  findNodeHandle,
   KeyboardAvoidingView,
   Platform,
   ScrollView,
   StyleSheet,
+  UIManager,
+  type LayoutRectangle,
   type ScrollViewProps,
   type TextInputProps,
 } from 'react-native';
@@ -23,7 +25,7 @@ type KeyboardFormContextValue = {
 
 const KeyboardFormContext = createContext<KeyboardFormContextValue | null>(null);
 
-const DEFAULT_FOCUS_PADDING = 60;
+const DEFAULT_FOCUS_PADDING = 80;
 
 export type KeyboardFormScrollViewProps = ScrollViewProps & {
   children: ReactNode;
@@ -48,26 +50,63 @@ export function KeyboardFormScrollView({
 }: KeyboardFormScrollViewProps) {
   const insets = useSafeAreaInsets();
   const scrollRef = useRef<ScrollView>(null);
+  const scrollLayoutRef = useRef<LayoutRectangle | null>(null);
+  const currentOffsetRef = useRef(0);
 
   const scrollToFocusedField = useCallback(
     (nativeHandle: number) => {
       const scroll = scrollRef.current;
       if (!scroll || !nativeHandle) return;
 
-      const run = () => {
-        scroll.scrollResponderScrollNativeHandleToKeyboard?.(
-          nativeHandle,
-          focusScrollPadding,
-          true,
-        );
-      };
-
       if (Platform.OS === 'android') {
-        InteractionManager.runAfterInteractions(() => {
-          setTimeout(run, 120);
-        });
+        // On Android, use measureLayout for reliable positioning
+        const scrollNode = findNodeHandle(scroll);
+        if (!scrollNode) return;
+
+        const doScroll = () => {
+          try {
+            UIManager.measureLayout(
+              nativeHandle,
+              scrollNode,
+              () => {},
+              (_x: number, y: number, _w: number, h: number) => {
+                const scrollHeight = scrollLayoutRef.current?.height ?? 400;
+                // Calculate where the field is relative to current scroll
+                const fieldBottom = y + h + focusScrollPadding;
+                const visibleBottom = currentOffsetRef.current + scrollHeight;
+
+                if (fieldBottom > visibleBottom) {
+                  // Field is below visible area — scroll down just enough
+                  const targetOffset = fieldBottom - scrollHeight;
+                  scroll.scrollTo({ y: targetOffset, animated: true });
+                } else if (y < currentOffsetRef.current + 20) {
+                  // Field is above visible area — scroll up
+                  scroll.scrollTo({ y: Math.max(0, y - 20), animated: true });
+                }
+                // If field is already visible, don't scroll at all
+              },
+            );
+          } catch {
+            // Fallback: use the old API if measureLayout fails
+            scroll.scrollResponderScrollNativeHandleToKeyboard?.(
+              nativeHandle,
+              focusScrollPadding,
+              true,
+            );
+          }
+        };
+
+        // Wait for keyboard to finish appearing
+        setTimeout(doScroll, 300);
       } else {
-        requestAnimationFrame(run);
+        // iOS: the built-in API works reliably
+        requestAnimationFrame(() => {
+          scroll.scrollResponderScrollNativeHandleToKeyboard?.(
+            nativeHandle,
+            focusScrollPadding,
+            true,
+          );
+        });
       }
     },
     [focusScrollPadding],
@@ -84,8 +123,17 @@ export function KeyboardFormScrollView({
         ref={scrollRef}
         keyboardShouldPersistTaps={keyboardShouldPersistTaps}
         keyboardDismissMode={keyboardDismissMode}
-        automaticallyAdjustKeyboardInsets={automaticallyAdjustKeyboardInsets}
+        automaticallyAdjustKeyboardInsets={
+          Platform.OS === 'ios' ? automaticallyAdjustKeyboardInsets : false
+        }
         showsVerticalScrollIndicator={showsVerticalScrollIndicator}
+        onLayout={(e) => {
+          scrollLayoutRef.current = e.nativeEvent.layout;
+        }}
+        onScroll={(e) => {
+          currentOffsetRef.current = e.nativeEvent.contentOffset.y;
+        }}
+        scrollEventThrottle={16}
         {...scrollProps}
       >
         {children}
@@ -100,7 +148,7 @@ export function KeyboardFormScrollView({
   return (
     <KeyboardAvoidingView
       style={[styles.flex, style]}
-      behavior={Platform.OS === 'ios' ? 'padding' : 'padding'}
+      behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
       keyboardVerticalOffset={keyboardVerticalOffset + insets.top}
     >
       {scrollView}

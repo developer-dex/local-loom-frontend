@@ -22,6 +22,7 @@ export type RootStackParamList = {
   TermsAndConditions: undefined;
   PrivacyPolicy: undefined;
   HelpSupport: undefined;
+  AboutUs: undefined;
   Faq: undefined;
   BecomeTradie:
     | undefined
