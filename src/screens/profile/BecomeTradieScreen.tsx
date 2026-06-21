@@ -439,6 +439,7 @@ export function BecomeTradieScreen() {
   );
   const [selectedServiceIds, setSelectedServiceIds] = useState<string[]>(initial?.selectedServiceIds ?? []);
   const [servicesPickerOpen, setServicesPickerOpen] = useState(false);
+  const [serviceSearch, setServiceSearch] = useState('');
   const [videoUri, setVideoUri] = useState<{ uri: string; name: string } | null>(initial?.videoUri ?? null);
   const [selectedRegionId, setSelectedRegionId] = useState<string | null>(
     initial?.selectedRegionId ?? initial?.selectedLocationId ?? null,
@@ -1335,7 +1336,7 @@ export function BecomeTradieScreen() {
               {/* Licence question toggle */}
               <View style={styles.licenceQuestionRow}>
                 <Text style={styles.licenceQuestionText}>
-                  Does your trade require a{'\n'}licence or registration number?
+                  Does your service require a{'\n'}licence or registration number?
                 </Text>
                 <View style={styles.licenceToggleGroup}>
                   <Pressable
@@ -1473,17 +1474,34 @@ export function BecomeTradieScreen() {
                   ) : categories.length === 0 ? (
                     <FieldError message="No services available." />
                   ) : (
-                    <ListCard>
-                      {categories.map((c, idx) => (
-                        <ListRow
-                          key={c.id}
-                          label={c.name}
-                          selected={selectedServiceIds.includes(c.id)}
-                          onPress={() => toggleService(c.id)}
-                          showDivider={idx < categories.length - 1}
+                    <>
+                      <View style={styles.serviceSearchWrap}>
+                        <TextInput
+                          style={styles.serviceSearchInput}
+                          placeholder="Search services..."
+                          placeholderTextColor={colors.placeholder}
+                          value={serviceSearch}
+                          onChangeText={setServiceSearch}
+                          autoCorrect={false}
+                          accessibilityLabel="Search services"
                         />
-                      ))}
-                    </ListCard>
+                      </View>
+                      <ListCard>
+                        {categories
+                          .filter((c) =>
+                            c.name.toLowerCase().includes(serviceSearch.trim().toLowerCase()),
+                          )
+                          .map((c, idx, arr) => (
+                            <ListRow
+                              key={c.id}
+                              label={c.name}
+                              selected={selectedServiceIds.includes(c.id)}
+                              onPress={() => toggleService(c.id)}
+                              showDivider={idx < arr.length - 1}
+                            />
+                          ))}
+                      </ListCard>
+                    </>
                   )
                 ) : null}
                 {!servicesPickerOpen && selectedServiceIds.length > 0 ? (
@@ -2231,6 +2249,22 @@ const styles = StyleSheet.create({
     fontSize: 14,
     lineHeight: 20,
     color: colors.label,
+  },
+  serviceSearchWrap: {
+    borderRadius: 10,
+    borderWidth: 1,
+    borderColor: colors.border,
+    paddingHorizontal: 12,
+    height: 40,
+    justifyContent: 'center',
+    backgroundColor: colors.background,
+    marginBottom: 8,
+  },
+  serviceSearchInput: {
+    fontFamily: fontFamilies.inter.regular,
+    fontSize: 14,
+    color: colors.onboardingTitle,
+    padding: 0,
   },
   fieldGroup: {
     gap: 8,

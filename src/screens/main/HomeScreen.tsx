@@ -172,6 +172,10 @@ export function HomeScreen() {
     navigation.navigate('Chat');
   }, [navigation]);
 
+  const goToProfileTab = useCallback(() => {
+    navigation.navigate('Profile');
+  }, [navigation]);
+
   const openAiSearch = useCallback(() => {
     navigation.getParent<NativeStackNavigationProp<RootStackParamList>>()?.navigate('AiSearch');
   }, [navigation]);
@@ -194,14 +198,16 @@ export function HomeScreen() {
     <View style={[styles.screen, { paddingTop: insets.top }]}>
       <View style={styles.header}>
         <View style={styles.headerLeft}>
-          <RemoteImage
-            uri={displayAvatar}
-            fallback={HEADER_AVATAR_FALLBACK}
-            style={styles.avatar}
-            containerStyle={[styles.avatar, !displayAvatar && styles.avatarPlaceholder]}
-            resizeMode="cover"
-            accessibilityLabel="Your profile photo"
-          />
+          <Pressable onPress={goToProfileTab} accessibilityRole="button" accessibilityLabel="Go to profile">
+            <RemoteImage
+              uri={displayAvatar}
+              fallback={HEADER_AVATAR_FALLBACK}
+              style={styles.avatar}
+              containerStyle={[styles.avatar, !displayAvatar && styles.avatarPlaceholder]}
+              resizeMode="cover"
+              accessibilityLabel="Your profile photo"
+            />
+          </Pressable>
           <View style={styles.headerTextCol}>
             <Text style={styles.userName} numberOfLines={1}>
               {displayName}

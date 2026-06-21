@@ -1,6 +1,7 @@
 import { useEffect, useMemo, useState } from 'react';
 import { Image, Pressable, StyleSheet, Text, View } from 'react-native';
 import * as ImagePicker from 'expo-image-picker';
+import { useNavigation } from '@react-navigation/native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import type { IdentifierType } from '../../api/authTypes';
 import { AppButton, AppTextField, Icon, KeyboardFormScrollView } from '../../components/ui';
@@ -39,6 +40,7 @@ type Props = {
 
 export function SignUpScreen({ onContinue, onBack, onSignIn, onSkipToHome }: Props) {
   const insets = useSafeAreaInsets();
+  const navigation = useNavigation<any>();
   const dispatch = useAppDispatch();
   const apiStatus = useAppSelector(selectAuthStatus);
   const apiError = useAppSelector(selectAuthError);
@@ -313,9 +315,9 @@ export function SignUpScreen({ onContinue, onBack, onSignIn, onSkipToHome }: Pro
           </View>
           <Text style={styles.termsText}>
             I agree to the{' '}
-            <Text style={styles.termsLink}>Terms & Conditions</Text>
+            <Text style={styles.termsLink} onPress={() => navigation.navigate('TermsAndConditions')}>Terms & Conditions</Text>
             {' '}and{' '}
-            <Text style={styles.termsLink}>Privacy Policy</Text>
+            <Text style={styles.termsLink} onPress={() => navigation.navigate('TermsAndConditions')}>Privacy Policy</Text>
           </Text>
         </Pressable>
         {termsError ? <Text style={styles.termsErrorText}>{termsError}</Text> : null}
