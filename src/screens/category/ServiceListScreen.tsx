@@ -55,7 +55,7 @@ function toNearYouItem(tradie: TradieListItem): NearYouItem {
 
 export function ServiceListScreen({ navigation, route }: Props) {
   const insets = useSafeAreaInsets();
-  const { categoryId, categoryTitle } = route.params;
+  const { categoryId, categoryTitle, regionId } = route.params;
   const tabBarSpace = useMemo(() => 88 + Math.max(insets.bottom, 14), [insets.bottom]);
   const dispatch = useAppDispatch();
   const tradieList = useAppSelector(selectTradieList);
@@ -64,8 +64,8 @@ export function ServiceListScreen({ navigation, route }: Props) {
 
   useEffect(() => {
     dispatch(clearTradieList());
-    dispatch(fetchTradiesThunk({ categoryId }));
-  }, [dispatch, categoryId]);
+    dispatch(fetchTradiesThunk({ categoryId, regionId }));
+  }, [dispatch, categoryId, regionId]);
 
   const items = useMemo<NearYouItem[]>(() => tradieList.map(toNearYouItem), [tradieList]);
 

@@ -1,4 +1,4 @@
 export type CategoryStackParamList = {
   CategoryHome: undefined;
-  ServiceList: { categoryId: string; categoryTitle: string };
+  ServiceList: { categoryId: string; categoryTitle: string; regionId?: string };
 };
