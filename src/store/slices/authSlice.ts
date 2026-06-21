@@ -63,6 +63,9 @@ const initialState: AuthState = {
  *     - client.ts auto-refreshes on 401 (expired access token) and retries.
  *     - If refresh also fails (refresh token expired/revoked) → clear tokens, return null.
  *  4. Return { user, tokens } so Redux state is fully restored.
+ *
+ * A 10-second timeout ensures the app boots even if the backend is slow
+ * (e.g. Render free-tier cold start).
  */
 export const hydrateAuthThunk = createAsyncThunk('auth/hydrate', async () => {
   const [accessToken, refreshToken] = await Promise.all([
@@ -74,8 +77,14 @@ export const hydrateAuthThunk = createAsyncThunk('auth/hydrate', async () => {
   if (!accessToken || !refreshToken) return null;
 
   try {
+    // Race the profile fetch against a 10s timeout so the app doesn't stay
+    // stuck on a white/loading screen when the backend is cold-starting.
+    const timeout = new Promise<never>((_, reject) =>
+      setTimeout(() => reject(new Error('Hydration timeout')), 10_000),
+    );
+
     // Fetch profile using stored token. client.ts handles auto-refresh on 401.
-    const res = await getUserMeApi();
+    const res = await Promise.race([getUserMeApi(), timeout]);
     // Re-read tokens after potential refresh
     const [newAccess, newRefresh] = await Promise.all([
       tokenStorage.getAccessToken(),
@@ -89,7 +98,7 @@ export const hydrateAuthThunk = createAsyncThunk('auth/hydrate', async () => {
       },
     };
   } catch {
-    // Refresh token expired or revoked — clear everything and force re-login
+    // Refresh token expired or revoked or timeout — clear everything and force re-login
     await tokenStorage.clearTokens();
     return null;
   }

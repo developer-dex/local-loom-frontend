@@ -1,4 +1,5 @@
 import { useEffect, useRef, useState } from 'react';
+import { ActivityIndicator, View } from 'react-native';
 import { CommonActions, DefaultTheme, NavigationContainer, useNavigationContainerRef, type Theme } from '@react-navigation/native';
 import { createNativeStackNavigator, type NativeStackNavigationProp, type NativeStackScreenProps } from '@react-navigation/native-stack';
 import { GestureHandlerRootView } from 'react-native-gesture-handler';
@@ -116,7 +117,15 @@ export function RootNavigator() {
   }, [isReady, isLoggedIn, onboardingSeen, navigationRef]);
 
   // Wait for onboarding flag AND auth hydration before first paint.
-  if (onboardingSeen === null || !isReady) return null;
+  // Show a loading indicator instead of returning null to avoid a white screen
+  // when the backend is slow (e.g. cold-starting on Render free tier).
+  if (onboardingSeen === null || !isReady) {
+    return (
+      <View style={{ flex: 1, alignItems: 'center', justifyContent: 'center', backgroundColor: colors.background }}>
+        <ActivityIndicator size="large" color={colors.primary} />
+      </View>
+    );
+  }
 
   // Logged-in users always land on home. Guests always start at role selection
   // (after onboarding) on every cold start — choice is not persisted.
