@@ -9,17 +9,29 @@
       "distribution": "internal",
       "android": {
         "buildType": "apk"
+      },
+      "env": {
+        "EXPO_PUBLIC_API_BASE_URL": "https://api.localloom.com.au/api/v1",
+        "EXPO_PUBLIC_SOCKET_BASE_URL": "https://api.localloom.com.au"
       }
     },
     "preview": {
       "distribution": "internal",
       "android": {
         "buildType": "apk"
+      },
+      "env": {
+        "EXPO_PUBLIC_API_BASE_URL": "https://api.localloom.com.au/api/v1",
+        "EXPO_PUBLIC_SOCKET_BASE_URL": "https://api.localloom.com.au"
       }
     },
     "production": {
       "android": {
-        "buildType": "apk"
+        "buildType": "aab"
+      },
+      "env": {
+        "EXPO_PUBLIC_API_BASE_URL": "https://api.localloom.com.au/api/v1",
+        "EXPO_PUBLIC_SOCKET_BASE_URL": "https://api.localloom.com.au"
       }
     }
   },
