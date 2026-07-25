@@ -1,4 +1,4 @@
-package com.localloom.app
+package com.localloom.com
 import com.facebook.react.common.assets.ReactFontManager
 
 import android.app.Application
